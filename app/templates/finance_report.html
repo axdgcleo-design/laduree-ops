@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block title %}財務報表 — Laduree OPS{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div><span class="page-title">財務報表</span></div>
+  </div>
+
+  <!-- 損益總覽 -->
+  <div class="report-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="report-box">
+      <div class="report-label">設計費收入</div>
+      <div class="report-value income">{{ fmt(design_income) }}</div>
+    </div>
+    <div class="report-box">
+      <div class="report-label">工程費收入</div>
+      <div class="report-value income">{{ fmt(eng_income) }}</div>
+    </div>
+    <div class="report-box" style="border-left:3px solid var(--green)">
+      <div class="report-label">收入合計</div>
+      <div class="report-value income">{{ fmt(total_income) }}</div>
+    </div>
+    <div class="report-box">
+      <div class="report-label">廠商支出</div>
+      <div class="report-value expense">{{ fmt(vendor_expense) }}</div>
+    </div>
+    <div class="report-box">
+      <div class="report-label">公司支出</div>
+      <div class="report-value expense">{{ fmt(company_expense) }}</div>
+    </div>
+    <div class="report-box" style="border-left:3px solid var(--red)">
+      <div class="report-label">支出合計</div>
+      <div class="report-value expense">{{ fmt(total_expense) }}</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:1.5rem;border-left:3px solid {% if profit >= 0 %}var(--green){% else %}var(--red){% endif %}">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:.68rem;letter-spacing:.1em;color:var(--muted);font-weight:500;margin-bottom:.3rem">損益</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:2rem;font-weight:500;color:{% if profit >= 0 %}var(--green){% else %}var(--red){% endif %}">
+          NT$ {{ fmt(profit) }}
+        </div>
+      </div>
+      <div style="text-align:right;font-size:.78rem;color:var(--muted)">
+        毛利率：{% if total_income > 0 %}{{ ((profit/total_income)*100)|round(1) }}%{% else %}—{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 各案場損益 -->
+  <div class="card">
+    <div style="font-size:.72rem;font-weight:500;letter-spacing:.08em;color:var(--muted);margin-bottom:.85rem">各案場損益</div>
+    <div style="overflow-x:auto">
+    <table class="finance-table">
+      <thead>
+        <tr>
+          <th>案場</th><th>業主</th>
+          <th class="r">設計費收入</th>
+          <th class="r">工程費收入</th>
+          <th class="r">廠商支出</th>
+          <th class="r">毛利</th>
+          <th class="r">毛利率</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in project_stats %}
+          {% set gross = p.total_received - p.vendor_expense %}
+          {% set margin = ((gross/p.total_received)*100)|round(1) if p.total_received > 0 else 0 %}
+          <tr>
+            <td style="font-weight:500">{{ p.name }}</td>
+            <td style="color:var(--mid)">{{ p.client_name }}</td>
+            <td class="r mono" style="color:var(--green)">{{ fmt(p.design_received) }}</td>
+            <td class="r mono" style="color:var(--green)">{{ fmt(p.eng_received) }}</td>
+            <td class="r mono" style="color:var(--red)">{{ fmt(p.vendor_expense) }}</td>
+            <td class="r mono" style="color:{% if gross >= 0 %}var(--green){% else %}var(--red){% endif %}">{{ fmt(gross) }}</td>
+            <td class="r" style="font-size:.76rem;color:var(--muted)">{{ margin }}%</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

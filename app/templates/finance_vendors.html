@@ -1,0 +1,441 @@
+{% extends 'base.html' %}
+{% block title %}廠商請款 — Laduree OPS{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div><span class="page-title">廠商請款</span></div>
+    <div class="actions-row">
+      <button class="btn btn-outline btn-sm" onclick="openTab('vendors')">廠商主檔</button>
+      <button class="btn btn-primary btn-sm" onclick="document.getElementById('add-invoice-modal').classList.add('open')">＋ 新增請款單</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <a class="tab active" onclick="openTab('pending')" id="tab-pending">待付款 {% if pending %}<span style="background:var(--red);color:#fff;font-size:.6rem;padding:1px 6px;border-radius:10px;margin-left:.3rem">{{ pending|length }}</span>{% endif %}</a>
+    <a class="tab" onclick="openTab('paid')" id="tab-paid">已付款</a>
+    <a class="tab" onclick="openTab('vendors')" id="tab-vendors">廠商主檔</a>
+  </div>
+
+  <!-- 待付款 -->
+  <div id="panel-pending">
+    {% if pending %}
+    <div class="card">
+      <div style="overflow-x:auto">
+      <table class="finance-table">
+        <thead>
+          <tr>
+            <th>到期日</th><th>廠商</th><th>案場</th><th>說明</th>
+            <th class="r">金額</th><th>發票</th><th>匯款帳號</th><th>備註</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in pending %}
+          <tr id="inv-row-{{ inv.id }}">
+            <td class="mono" style="color:{% if inv.due_date and inv.due_date < now %}var(--red){% else %}var(--amber){% endif %}">
+              {{ inv.due_date or '未設定' }}
+            </td>
+            <td style="font-weight:500">{{ inv.vendor_name }}</td>
+            <td style="color:var(--mid)">{{ inv.project_name or '—' }}</td>
+            <td>{{ inv.period_name }}</td>
+            <td class="r mono">{{ fmt(inv.amount) }}</td>
+            <td>
+              {% if inv.invoice_status == '有發票' %}
+                <span style="font-size:.72rem;color:var(--green)">{{ inv.invoice_no or '有' }}</span>
+              {% else %}
+                <span style="font-size:.72rem;color:var(--muted)">無</span>
+              {% endif %}
+            </td>
+            <td style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--mid)">
+              {% if inv.bank_account %}{{ inv.bank_account }}{% else %}—{% endif %}
+              {% if inv.bank_holder %}<div style="font-size:.65rem;color:var(--muted)">{{ inv.bank_holder }}</div>{% endif %}
+            </td>
+            <td style="font-size:.72rem;color:var(--mid)">{{ inv.note }}</td>
+            <td>
+              <div class="actions-row">
+                <button class="btn btn-outline btn-sm" style="color:var(--green);border-color:var(--green)"
+                        onclick="openPayModal({{ inv.id }}, '{{ inv.vendor_name }}', {{ inv.amount }}, '{{ inv.bank_account or '' }}')">
+                  標記已付
+                </button>
+                <button class="btn btn-ghost btn-sm" style="color:var(--red)"
+                        onclick="deleteInvoice({{ inv.id }})">×</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" style="font-size:.68rem;color:var(--muted);padding:.5rem .65rem">合計</td>
+            <td class="r mono" style="font-weight:500;color:var(--red)">{{ fmt(pending|sum(attribute='amount')) }}</td>
+            <td colspan="4"></td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="card"><div class="empty"><div class="empty-title">目前沒有待付款</div></div></div>
+    {% endif %}
+  </div>
+
+  <!-- 已付款 -->
+  <div id="panel-paid" style="display:none">
+    {% if paid %}
+    <div class="card">
+      <div style="overflow-x:auto">
+      <table class="finance-table">
+        <thead>
+          <tr>
+            <th>付款日</th><th>廠商</th><th>案場</th><th>說明</th>
+            <th class="r">金額</th><th>付款方式</th><th>備註</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in paid %}
+          <tr>
+            <td class="mono" style="color:var(--mid)">{{ inv.paid_date or '—' }}</td>
+            <td style="font-weight:500">{{ inv.vendor_name }}</td>
+            <td style="color:var(--mid)">{{ inv.project_name or '—' }}</td>
+            <td>{{ inv.period_name }}</td>
+            <td class="r mono">{{ fmt(inv.amount) }}</td>
+            <td>{{ {'transfer':'匯款','cash':'現金','check':'開票'}.get(inv.payment_method, inv.payment_method or '—') }}</td>
+            <td style="font-size:.72rem;color:var(--mid)">{{ inv.note }}</td>
+            <td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteInvoice({{ inv.id }})">×</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="card"><div class="empty"><div class="empty-title">尚無已付款紀錄</div></div></div>
+    {% endif %}
+  </div>
+
+  <!-- 廠商主檔 -->
+  <div id="panel-vendors" style="display:none">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:.75rem">
+      <button class="btn btn-primary btn-sm" onclick="document.getElementById('add-vendor-modal').classList.add('open')">＋ 新增廠商</button>
+    </div>
+    {% if vendors %}
+    <div class="card">
+      <div style="overflow-x:auto">
+      <table class="finance-table">
+        <thead>
+          <tr>
+            <th>廠商名稱</th><th>類別</th><th>聯絡人</th><th>電話</th>
+            <th>銀行</th><th>帳號</th><th>戶名</th><th>備註</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in vendors %}
+          <tr>
+            <td style="font-weight:500">{{ v.name }}</td>
+            <td><span style="font-size:.68rem;padding:2px 7px;border-radius:2px;background:var(--cream)">{{ v.category or '—' }}</span></td>
+            <td>{{ v.contact or '—' }}</td>
+            <td class="mono" style="font-size:.75rem">{{ v.tel or '—' }}</td>
+            <td style="font-size:.78rem">{{ v.bank_name or '—' }}</td>
+            <td class="mono" style="font-size:.75rem;color:var(--mid)">{{ v.bank_account or '—' }}</td>
+            <td style="font-size:.78rem">{{ v.bank_holder or '—' }}</td>
+            <td style="font-size:.72rem;color:var(--mid)">{{ v.note }}</td>
+            <td>
+              <div class="actions-row">
+                <button class="btn btn-ghost btn-sm" onclick="openEditVendor({{ v|tojson }})">編輯</button>
+                <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteVendor({{ v.id }})">×</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="card"><div class="empty"><div class="empty-title">尚無廠商資料</div><div class="empty-sub">先新增廠商，再建立請款單</div></div></div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 新增請款單 Modal -->
+<div class="modal-overlay" id="add-invoice-modal">
+  <div class="modal">
+    <div class="modal-title">新增廠商請款單</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>廠商</label>
+        <select id="inv-vendor" onchange="fillVendorInfo(this)">
+          <option value="">— 選擇廠商 —</option>
+          {% for v in vendors %}
+          <option value="{{ v.id }}" data-account="{{ v.bank_account }}" data-holder="{{ v.bank_holder }}" data-bank="{{ v.bank_name }}">{{ v.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>案場</label>
+        <select id="inv-project">
+          <option value="">— 選擇案場 —</option>
+          {% for p in projects %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group form-full">
+        <label>說明（期次）</label>
+        <input type="text" id="inv-period" placeholder="例：第一期、鋁窗工程款">
+      </div>
+      <div class="form-group">
+        <label>金額（NT$）</label>
+        <input type="number" id="inv-amount" min="0" step="1">
+      </div>
+      <div class="form-group">
+        <label>應付日期</label>
+        <input type="date" id="inv-due">
+      </div>
+      <div class="form-group">
+        <label>稅別</label>
+        <select id="inv-tax">
+          <option>未稅</option><option>含稅</option><option>免稅</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>發票</label>
+        <select id="inv-inv"><option>無發票</option><option>有發票</option></select>
+      </div>
+      <div class="form-group">
+        <label>發票號碼</label>
+        <input type="text" id="inv-invno">
+      </div>
+      <div class="form-group form-full">
+        <label>備註</label>
+        <input type="text" id="inv-note">
+      </div>
+    </div>
+    <div id="vendor-bank-info" style="display:none;background:var(--cream);border-radius:2px;padding:.75rem 1rem;margin-top:.5rem;font-size:.78rem">
+      <div style="font-size:.65rem;letter-spacing:.1em;color:var(--muted);margin-bottom:.35rem">廠商匯款資訊</div>
+      <span id="vbi-bank"></span>　<span id="vbi-account" style="font-family:'JetBrains Mono',monospace"></span>　<span id="vbi-holder"></span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="document.getElementById('add-invoice-modal').classList.remove('open')">取消</button>
+      <button class="btn btn-primary" onclick="submitInvoice()">新增</button>
+    </div>
+  </div>
+</div>
+
+<!-- 標記已付 Modal -->
+<div class="modal-overlay" id="pay-modal">
+  <div class="modal">
+    <div class="modal-title">標記已付款</div>
+    <input type="hidden" id="pay-id">
+    <div style="font-size:.82rem;color:var(--mid);margin-bottom:1.25rem">
+      <span id="pay-vendor-name"></span>　
+      <span id="pay-amount" style="font-family:'JetBrains Mono',monospace;font-weight:500;color:var(--ink)"></span>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>付款日期</label>
+        <input type="date" id="pay-date">
+      </div>
+      <div class="form-group">
+        <label>付款方式</label>
+        <select id="pay-method">
+          <option value="transfer">匯款</option>
+          <option value="cash">現金</option>
+          <option value="check">開票</option>
+        </select>
+      </div>
+      <div class="form-group form-full">
+        <label>備註</label>
+        <input type="text" id="pay-note" placeholder="例：已匯款至 12345">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="document.getElementById('pay-modal').classList.remove('open')">取消</button>
+      <button class="btn btn-primary" onclick="submitPay()">確認已付</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新增廠商 Modal -->
+<div class="modal-overlay" id="add-vendor-modal">
+  <div class="modal">
+    <div class="modal-title" id="vendor-modal-title">新增廠商</div>
+    <input type="hidden" id="vendor-edit-id">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>廠商名稱</label>
+        <input type="text" id="v-name" placeholder="例：水電/蘇先生">
+      </div>
+      <div class="form-group">
+        <label>類別</label>
+        <select id="v-cat">
+          <option>水電</option><option>木作</option><option>泥作</option><option>鋁窗</option>
+          <option>油漆</option><option>燈具</option><option>廚具</option><option>衛浴</option>
+          <option>冷氣</option><option>地板</option><option>設計</option><option>其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>聯絡人</label>
+        <input type="text" id="v-contact">
+      </div>
+      <div class="form-group">
+        <label>電話</label>
+        <input type="text" id="v-tel">
+      </div>
+    </div>
+    <hr class="divider">
+    <div style="font-size:.7rem;letter-spacing:.08em;color:var(--muted);margin-bottom:.85rem">匯款資訊</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>銀行名稱</label>
+        <input type="text" id="v-bank" placeholder="例：台灣銀行 古亭分行">
+      </div>
+      <div class="form-group">
+        <label>戶名</label>
+        <input type="text" id="v-holder">
+      </div>
+      <div class="form-group form-full">
+        <label>帳號</label>
+        <input type="text" id="v-account" style="font-family:'JetBrains Mono',monospace;letter-spacing:.1em">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:.85rem">
+      <label>備註</label>
+      <input type="text" id="v-note">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeVendorModal()">取消</button>
+      <button class="btn btn-primary" onclick="submitVendor()">儲存</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const today = new Date().toISOString().slice(0,10);
+document.getElementById('pay-date').value = today;
+
+function openTab(tab) {
+  ['pending','paid','vendors'].forEach(t => {
+    document.getElementById('panel-'+t).style.display = t===tab ? '' : 'none';
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+}
+
+function fillVendorInfo(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  const account = opt.dataset.account || '';
+  const holder  = opt.dataset.holder  || '';
+  const bank    = opt.dataset.bank    || '';
+  const box = document.getElementById('vendor-bank-info');
+  if (account || bank) {
+    document.getElementById('vbi-bank').textContent    = bank;
+    document.getElementById('vbi-account').textContent = account;
+    document.getElementById('vbi-holder').textContent  = holder;
+    box.style.display = '';
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+function openPayModal(id, name, amount, account) {
+  document.getElementById('pay-id').value = id;
+  document.getElementById('pay-vendor-name').textContent = name;
+  document.getElementById('pay-amount').textContent = 'NT$ ' + Math.round(amount).toLocaleString();
+  document.getElementById('pay-modal').classList.add('open');
+}
+
+async function submitInvoice() {
+  const vid = document.getElementById('inv-vendor').value;
+  if (!vid) { alert('請選擇廠商'); return; }
+  const r = await fetch('/api/vendor-invoice', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      vendor_id:     parseInt(vid),
+      project_id:    document.getElementById('inv-project').value || null,
+      vendor_name:   document.getElementById('inv-vendor').options[document.getElementById('inv-vendor').selectedIndex].text,
+      period_name:   document.getElementById('inv-period').value,
+      due_date:      document.getElementById('inv-due').value,
+      amount:        parseFloat(document.getElementById('inv-amount').value) || 0,
+      tax_setting:   document.getElementById('inv-tax').value,
+      invoice_status:document.getElementById('inv-inv').value,
+      invoice_no:    document.getElementById('inv-invno').value,
+      note:          document.getElementById('inv-note').value
+    })
+  });
+  if ((await r.json()).ok) location.reload();
+}
+
+async function submitPay() {
+  const id = document.getElementById('pay-id').value;
+  const r = await fetch(`/api/vendor-invoice/${id}/pay`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      paid_date:      document.getElementById('pay-date').value,
+      payment_method: document.getElementById('pay-method').value,
+      paid_account:   document.getElementById('pay-note').value
+    })
+  });
+  if ((await r.json()).ok) location.reload();
+}
+
+async function deleteInvoice(id) {
+  if (!confirm('確定刪除？')) return;
+  const r = await fetch(`/api/vendor-invoice/${id}`, {method:'DELETE'});
+  if ((await r.json()).ok) location.reload();
+}
+
+function openEditVendor(v) {
+  document.getElementById('vendor-modal-title').textContent = '編輯廠商';
+  document.getElementById('vendor-edit-id').value = v.id;
+  document.getElementById('v-name').value    = v.name || '';
+  document.getElementById('v-cat').value     = v.category || '';
+  document.getElementById('v-contact').value = v.contact || '';
+  document.getElementById('v-tel').value     = v.tel || '';
+  document.getElementById('v-bank').value    = v.bank_name || '';
+  document.getElementById('v-holder').value  = v.bank_holder || '';
+  document.getElementById('v-account').value = v.bank_account || '';
+  document.getElementById('v-note').value    = v.note || '';
+  document.getElementById('add-vendor-modal').classList.add('open');
+}
+
+function closeVendorModal() {
+  document.getElementById('vendor-modal-title').textContent = '新增廠商';
+  document.getElementById('vendor-edit-id').value = '';
+  ['v-name','v-contact','v-tel','v-bank','v-holder','v-account','v-note'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('add-vendor-modal').classList.remove('open');
+}
+
+async function submitVendor() {
+  const editId = document.getElementById('vendor-edit-id').value;
+  const payload = {
+    name:         document.getElementById('v-name').value.trim(),
+    category:     document.getElementById('v-cat').value,
+    contact:      document.getElementById('v-contact').value,
+    tel:          document.getElementById('v-tel').value,
+    bank_name:    document.getElementById('v-bank').value,
+    bank_holder:  document.getElementById('v-holder').value,
+    bank_account: document.getElementById('v-account').value,
+    note:         document.getElementById('v-note').value
+  };
+  if (!payload.name) { alert('請填廠商名稱'); return; }
+  const url    = editId ? `/api/vendor/${editId}` : '/api/vendor';
+  const method = editId ? 'PATCH' : 'POST';
+  const r = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+  if ((await r.json()).ok) location.reload();
+}
+
+async function deleteVendor(id) {
+  if (!confirm('確定刪除這個廠商？')) return;
+  const r = await fetch(`/api/vendor/${id}`, {method:'DELETE'});
+  if ((await r.json()).ok) location.reload();
+}
+
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target===o) o.classList.remove('open'); });
+});
+</script>
+{% endblock %}

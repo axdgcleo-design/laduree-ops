@@ -1,0 +1,367 @@
+{% extends 'base.html' %}
+{% block title %}{{ project.name }} — Laduree OPS{% endblock %}
+{% block body %}
+<div class="page">
+  <a href="{{ url_for('project_list') }}" style="font-size:.75rem;color:var(--muted);text-decoration:none">← 所有案場</a>
+
+  <div class="page-header" style="margin-top:.5rem">
+    <div>
+      <span class="page-title">{{ project.name }}</span>
+      <span class="page-subtitle">{{ project.code }}</span>
+      <span class="status status-{{ project.status }}" style="margin-left:.5rem">{{ {'active':'進行中','completed':'已完工','paused':'暫停'}[project.status] }}</span>
+    </div>
+    <div class="actions-row">
+      <a href="{{ url_for('project_edit', pid=project.id) }}" class="btn btn-outline btn-sm">編輯</a>
+      <form method="POST" action="{{ url_for('project_delete', pid=project.id) }}"
+            onsubmit="return confirm('確定刪除？')">
+        <button type="submit" class="btn btn-danger btn-sm">刪除</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-label">設計費合約</div>
+      <div class="stat-value">{{ fmt(project.design_contract) }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">工程款合約</div>
+      <div class="stat-value">{{ fmt(project.engineering_contract) }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">已收款</div>
+      <div class="stat-value green">{{ fmt(stats.total_received) }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">待請款</div>
+      <div class="stat-value red">{{ fmt(stats.total_pending) }}</div>
+    </div>
+  </div>
+
+  <!-- Info -->
+  <div class="card" style="margin-bottom:1.25rem">
+    <div class="info-grid">
+      <div>
+        <div class="info-label">業主</div>
+        <div class="info-val">{{ project.client_name or '—' }}</div>
+        {% if project.client_tel %}<div class="info-val muted">{{ project.client_tel }}</div>{% endif %}
+        {% if project.client_email %}<div class="info-val muted">{{ project.client_email }}</div>{% endif %}
+      </div>
+      <div>
+        <div class="info-label">地址</div>
+        <div class="info-val">{{ project.address or '—' }}</div>
+      </div>
+      <div>
+        <div class="info-label">開工日期</div>
+        <div class="info-val">{{ project.start_date or '—' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Periods: design -->
+  {% if project.design_contract > 0 %}
+  <div class="card" style="margin-bottom:1rem">
+    {% set design_periods = stats.periods|selectattr('contract_type','eq','design')|list %}
+    {% set design_received = stats.design_received %}
+    {% set dpct = (design_received / project.design_contract * 100)|int %}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <div style="display:flex;align-items:center;gap:.75rem">
+        <span style="font-size:.82rem;font-weight:500">設計費請款</span>
+        <span class="type-badge badge-design">NT$ {{ fmt(project.design_contract) }}</span>
+        <span style="font-size:.72rem;color:var(--muted)">已收 {{ dpct }}%</span>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="openAddModal('design')">＋ 新增期數</button>
+    </div>
+    {{ _render_periods(design_periods, 'design') }}
+  </div>
+  {% endif %}
+
+  <!-- Periods: construction -->
+  {% if project.engineering_contract > 0 %}
+  <div class="card">
+    {% set eng_periods = stats.periods|selectattr('contract_type','eq','construction')|list %}
+    {% set eng_received = stats.eng_received %}
+    {% set epct = (eng_received / project.engineering_contract * 100)|int %}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <div style="display:flex;align-items:center;gap:.75rem">
+        <span style="font-size:.82rem;font-weight:500">工程款請款</span>
+        <span class="type-badge badge-construction">NT$ {{ fmt(project.engineering_contract) }}</span>
+        <span style="font-size:.72rem;color:var(--muted)">已收 {{ epct }}%</span>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="openAddModal('construction')">＋ 新增期數</button>
+    </div>
+    {{ _render_periods(eng_periods, 'construction') }}
+  </div>
+  {% endif %}
+
+  {% if project.design_contract == 0 and project.engineering_contract == 0 %}
+  <div class="card">
+    <div class="empty">
+      <div class="empty-title">尚未設定合約金額</div>
+      <div class="empty-sub"><a href="{{ url_for('project_edit', pid=project.id) }}" class="btn btn-outline btn-sm" style="margin-top:.75rem">編輯案場</a></div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% macro _render_periods(periods, ct) %}
+{% if periods %}
+<div style="overflow-x:auto">
+<table class="periods-table">
+  <thead>
+    <tr>
+      <th>期次</th><th>說明</th><th style="text-align:right">金額</th>
+      <th>應收日</th><th>收款方式</th><th>發票</th>
+      <th>實收日</th><th>狀態</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in periods %}
+    <tr>
+      <td><span class="period-no">第 {{ p.period_no }} 期</span></td>
+      <td>{{ p.label }}</td>
+      <td class="amount-cell">{{ fmt(p.amount) }}</td>
+      <td class="mono" style="color:var(--mid)">{{ p.due_date or '—' }}</td>
+      <td>
+        {% if p.payment_method == 'transfer' %}<span class="pay-tag pay-transfer">匯款{% if p.account_last5 %} *{{ p.account_last5 }}{% endif %}</span>
+        {% elif p.payment_method == 'cash' %}<span class="pay-tag pay-cash">現金</span>
+        {% elif p.payment_method == 'check' %}<span class="pay-tag pay-check">開票</span>
+        {% else %}—{% endif %}
+      </td>
+      <td>
+        {% if p.has_invoice %}
+          <div style="font-size:.75rem">已開</div>
+          {% if p.invoice_no %}<div class="mono" style="font-size:.68rem;color:var(--mid)">{{ p.invoice_no }}</div>{% endif %}
+        {% else %}<span style="font-size:.75rem;color:var(--muted)">未開</span>{% endif %}
+      </td>
+      <td class="mono" style="color:var(--mid)">{{ p.received_date or '—' }}</td>
+      <td><span class="status status-{{ p.status }}">{{ {'pending':'待請款','invoiced':'已開單','received':'已收款'}[p.status] }}</span></td>
+      <td>
+        <div class="actions-row">
+          {% if p.status in ('invoiced','received') %}
+          <a href="{{ url_for('invoice_print', iid=p.id) }}" target="_blank" class="btn btn-ghost btn-sm">列印</a>
+          {% endif %}
+          <button class="btn btn-ghost btn-sm" onclick="openEditModal({{ p.id }}, {{ p|tojson }})">編輯</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deletePeriod({{ p.id }})">刪除</button>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="2" style="font-size:.68rem;color:var(--muted);padding:.5rem .75rem">合計</td>
+      <td class="amount-cell" style="color:var(--red)">{{ fmt(periods|sum(attribute='amount')) }}</td>
+      <td colspan="6"></td>
+    </tr>
+  </tfoot>
+</table>
+</div>
+{% else %}
+<div class="empty" style="padding:2rem 1rem">
+  <div class="empty-title">尚無期數</div>
+</div>
+{% endif %}
+{% endmacro %}
+
+<!-- Add Modal -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal">
+    <div class="modal-title">新增期數　<span id="add-ct-label" style="font-size:.85rem;color:var(--muted)"></span></div>
+    <input type="hidden" id="add-ct">
+    <div class="form-group" style="margin-bottom:.85rem">
+      <label>說明</label>
+      <input type="text" id="add-label" placeholder="例：簽約款">
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>金額（NT$）</label>
+        <input type="number" id="add-amount" min="0" step="1">
+      </div>
+      <div class="form-group">
+        <label>應收日期</label>
+        <input type="date" id="add-due">
+      </div>
+    </div>
+    <div style="margin-top:.85rem">
+      <div style="font-size:.68rem;letter-spacing:.08em;color:var(--muted);margin-bottom:.5rem">收款方式</div>
+      <div class="radio-row">
+        <label class="radio-opt"><input type="radio" name="add-pay" value="transfer" onchange="toggleAcct('add',this.value)"> 匯款</label>
+        <label class="radio-opt"><input type="radio" name="add-pay" value="cash"     onchange="toggleAcct('add',this.value)"> 現金</label>
+        <label class="radio-opt"><input type="radio" name="add-pay" value="check"    onchange="toggleAcct('add',this.value)"> 開票</label>
+      </div>
+      <div class="form-group" id="add-acct-wrap" style="display:none;margin-top:.65rem">
+        <label>帳號後五碼</label>
+        <input type="text" id="add-acct" maxlength="5" style="font-family:'JetBrains Mono',monospace">
+      </div>
+    </div>
+    <div style="margin-top:.85rem">
+      <label class="toggle-wrap">
+        <span class="toggle"><input type="checkbox" id="add-inv" onchange="toggleInvNo('add',this.checked)"><span class="toggle-slider"></span></span>
+        開立發票
+      </label>
+      <div class="form-group" id="add-invno-wrap" style="display:none;margin-top:.65rem">
+        <label>發票號碼（8碼）</label>
+        <input type="text" id="add-invno" maxlength="8" style="font-family:'JetBrains Mono',monospace">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('add-modal')">取消</button>
+      <button class="btn btn-primary" onclick="submitAdd()">新增</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-title">編輯期數　<span id="edit-period-label" style="font-size:.85rem;color:var(--muted)"></span></div>
+    <input type="hidden" id="edit-id">
+    <div class="form-group" style="margin-bottom:.85rem">
+      <label>說明</label>
+      <input type="text" id="edit-label">
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>金額（NT$）</label>
+        <input type="number" id="edit-amount" min="0" step="1">
+      </div>
+      <div class="form-group">
+        <label>應收日期</label>
+        <input type="date" id="edit-due">
+      </div>
+      <div class="form-group">
+        <label>狀態</label>
+        <select id="edit-status">
+          <option value="pending">待請款</option>
+          <option value="invoiced">已開單</option>
+          <option value="received">已收款</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>開單日期</label>
+        <input type="date" id="edit-invoice-date">
+      </div>
+      <div class="form-group">
+        <label>實收日期</label>
+        <input type="date" id="edit-received-date">
+      </div>
+    </div>
+    <div style="margin-top:.85rem">
+      <div style="font-size:.68rem;letter-spacing:.08em;color:var(--muted);margin-bottom:.5rem">收款方式</div>
+      <div class="radio-row">
+        <label class="radio-opt"><input type="radio" name="edit-pay" value="transfer" onchange="toggleAcct('edit',this.value)"> 匯款</label>
+        <label class="radio-opt"><input type="radio" name="edit-pay" value="cash"     onchange="toggleAcct('edit',this.value)"> 現金</label>
+        <label class="radio-opt"><input type="radio" name="edit-pay" value="check"    onchange="toggleAcct('edit',this.value)"> 開票</label>
+        <label class="radio-opt"><input type="radio" name="edit-pay" value=""         onchange="toggleAcct('edit',this.value)"> 未定</label>
+      </div>
+      <div class="form-group" id="edit-acct-wrap" style="display:none;margin-top:.65rem">
+        <label>帳號後五碼</label>
+        <input type="text" id="edit-acct" maxlength="5" style="font-family:'JetBrains Mono',monospace">
+      </div>
+    </div>
+    <div style="margin-top:.85rem">
+      <label class="toggle-wrap">
+        <span class="toggle"><input type="checkbox" id="edit-inv" onchange="toggleInvNo('edit',this.checked)"><span class="toggle-slider"></span></span>
+        開立發票
+      </label>
+      <div class="form-group" id="edit-invno-wrap" style="display:none;margin-top:.65rem">
+        <label>發票號碼（8碼）</label>
+        <input type="text" id="edit-invno" maxlength="8" style="font-family:'JetBrains Mono',monospace">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('edit-modal')">取消</button>
+      <button class="btn btn-primary" onclick="submitEdit()">儲存</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PID = {{ project.id }};
+function toggleAcct(p,v){document.getElementById(p+'-acct-wrap').style.display=v==='transfer'?'':'none';}
+function toggleInvNo(p,c){document.getElementById(p+'-invno-wrap').style.display=c?'':'none';}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+
+function openAddModal(ct){
+  document.getElementById('add-ct').value=ct;
+  document.getElementById('add-ct-label').textContent=ct==='design'?'設計費':'工程款';
+  ['add-label','add-amount','add-due','add-acct','add-invno'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.querySelectorAll('[name="add-pay"]').forEach(r=>r.checked=false);
+  document.getElementById('add-inv').checked=false;
+  document.getElementById('add-acct-wrap').style.display='none';
+  document.getElementById('add-invno-wrap').style.display='none';
+  document.getElementById('add-modal').classList.add('open');
+}
+
+function openEditModal(id, data){
+  document.getElementById('edit-id').value=id;
+  document.getElementById('edit-period-label').textContent='第 '+data.period_no+' 期';
+  document.getElementById('edit-label').value=data.label||'';
+  document.getElementById('edit-amount').value=data.amount||'';
+  document.getElementById('edit-due').value=data.due_date||'';
+  document.getElementById('edit-invoice-date').value=data.invoice_date||'';
+  document.getElementById('edit-received-date').value=data.received_date||'';
+  document.getElementById('edit-status').value=data.status||'pending';
+  document.getElementById('edit-acct').value=data.account_last5||'';
+  document.getElementById('edit-invno').value=data.invoice_no||'';
+  const pay=data.payment_method||'';
+  document.querySelectorAll('[name="edit-pay"]').forEach(r=>r.checked=r.value===pay);
+  document.getElementById('edit-acct-wrap').style.display=pay==='transfer'?'':'none';
+  const hasInv=!!data.has_invoice;
+  document.getElementById('edit-inv').checked=hasInv;
+  document.getElementById('edit-invno-wrap').style.display=hasInv?'':'none';
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function getPayRadio(p){const s=document.querySelector(`[name="${p}-pay"]:checked`);return s?s.value:'';}
+
+async function submitAdd(){
+  const ct=document.getElementById('add-ct').value;
+  const label=document.getElementById('add-label').value.trim();
+  if(!label){alert('請填寫說明');return;}
+  const pay=getPayRadio('add');
+  const r=await fetch(`/api/project/${PID}/periods`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({contract_type:ct,label,amount:parseFloat(document.getElementById('add-amount').value)||0,
+      due_date:document.getElementById('add-due').value,payment_method:pay,
+      account_last5:pay==='transfer'?document.getElementById('add-acct').value.trim():'',
+      has_invoice:document.getElementById('add-inv').checked,
+      invoice_no:document.getElementById('add-invno').value.trim()})
+  });
+  if((await r.json()).ok) location.reload();
+}
+
+async function submitEdit(){
+  const id=document.getElementById('edit-id').value;
+  const pay=getPayRadio('edit');
+  const r=await fetch(`/api/period/${id}`,{
+    method:'PATCH',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({label:document.getElementById('edit-label').value.trim(),
+      amount:parseFloat(document.getElementById('edit-amount').value)||0,
+      due_date:document.getElementById('edit-due').value,
+      payment_method:pay,
+      account_last5:pay==='transfer'?document.getElementById('edit-acct').value.trim():'',
+      has_invoice:document.getElementById('edit-inv').checked?1:0,
+      invoice_no:document.getElementById('edit-invno').value.trim(),
+      invoice_date:document.getElementById('edit-invoice-date').value,
+      received_date:document.getElementById('edit-received-date').value,
+      status:document.getElementById('edit-status').value})
+  });
+  if((await r.json()).ok) location.reload();
+}
+
+async function deletePeriod(id){
+  if(!confirm('確定刪除？')) return;
+  const r=await fetch(`/api/period/${id}`,{method:'DELETE'});
+  if((await r.json()).ok) location.reload();
+}
+
+document.querySelectorAll('.modal-overlay').forEach(o=>{
+  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
+});
+</script>
+{% endblock %}

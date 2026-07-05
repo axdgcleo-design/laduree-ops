@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>請款單 — {{ project.name }} 第{{ period.period_no }}期</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Cormorant+Garamond:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+    :root {
+      --ink:#1a1a1a; --mid:#6b6560; --muted:#a09890; --line:#ddd8d0;
+      --red:#c44536; --cream:#f4f1ec; --green:#2d6a4f;
+      --blue:#1d4ed8; --blue-bg:#e0edff; --green-bg:#edf7f1; --amber:#8a6000; --amber-bg:#fdf6e3;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; font-style:normal; }
+    body { font-family:'Noto Sans TC',sans-serif; color:var(--ink); background:#fff; font-size:13px; line-height:1.7; }
+
+    .page { width:210mm; min-height:297mm; margin:0 auto; padding:18mm 18mm 20mm; background:#fff; position:relative; }
+
+    /* header */
+    .hd { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid var(--ink); padding-bottom:1.1rem; margin-bottom:1.5rem; }
+    .logo-area { min-width:180px; }
+    .logo-area img { height:40px; width:auto; display:block; }
+    .logo-fallback .en { font-family:'Cormorant Garamond',serif; font-size:22px; font-weight:600; letter-spacing:.08em; color:var(--ink); }
+    .logo-fallback .zh { font-size:11px; color:var(--muted); letter-spacing:.12em; margin-top:2px; }
+    .co-info { font-size:11px; color:var(--muted); margin-top:.5rem; line-height:1.8; font-weight:300; }
+    .doc-right { text-align:right; }
+    .doc-title { font-size:22px; font-weight:500; letter-spacing:.2em; color:var(--ink); }
+    .doc-meta  { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); margin-top:5px; line-height:1.8; }
+
+    /* meta */
+    .meta { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.5rem; }
+    .mlabel { font-size:10px; letter-spacing:.12em; color:var(--muted); font-weight:500; margin-bottom:.25rem; }
+    .mval   { font-size:13px; color:var(--ink); }
+    .mval.lg{ font-size:15px; font-weight:500; }
+    .mval.sub{ font-size:11px; color:var(--mid); margin-top:.15rem; }
+
+    /* section */
+    .sec-title { font-size:10px; letter-spacing:.12em; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:4px; margin-bottom:.85rem; margin-top:1.5rem; }
+
+    /* period table */
+    .ptbl { width:100%; border-collapse:collapse; font-size:12px; }
+    .ptbl th { text-align:left; font-size:9.5px; letter-spacing:.1em; color:var(--muted); font-weight:500; padding:.35rem .4rem; border-bottom:1px solid var(--line); }
+    .ptbl td { padding:.4rem .4rem; border-bottom:1px solid #f0ece6; color:var(--ink); vertical-align:middle; }
+    .ptbl td:last-child { text-align:right; font-family:'JetBrains Mono',monospace; font-size:11.5px; }
+    .ptbl tr:last-child td { border-bottom:none; }
+    .row-paid td { color:var(--muted); }
+    .row-paid td:last-child { color:var(--green); }
+    .row-cur td { font-weight:500; }
+    .row-fut td { color:#c8c4be; }
+    .dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
+    .d-paid { background:var(--green); }
+    .d-cur  { background:var(--red); }
+    .d-fut  { background:var(--line); }
+    .pno    { font-family:'JetBrains Mono',monospace; font-size:10px; }
+
+    /* pay tag */
+    .pay-tag { font-size:10px; padding:1px 6px; border-radius:2px; }
+    .pay-t { background:var(--blue-bg); color:var(--blue); }
+    .pay-c { background:var(--green-bg); color:var(--green); }
+    .pay-ch{ background:var(--amber-bg); color:var(--amber); }
+
+    /* subtotal */
+    .subtotal { display:flex; justify-content:space-between; padding:.45rem .4rem; border-top:1px solid var(--ink); font-size:12px; }
+    .stl  { color:var(--mid); font-size:10px; letter-spacing:.08em; }
+    .stv  { font-family:'JetBrains Mono',monospace; font-weight:500; color:var(--green); }
+
+    /* amount block */
+    .ablock { display:flex; justify-content:space-between; align-items:center; padding:.8rem 1rem; background:var(--cream); border-radius:2px; margin-top:.1rem; }
+    .albl   { font-size:10px; letter-spacing:.1em; color:var(--mid); }
+    .aval   { font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:500; color:var(--ink); }
+
+    /* invoice tag */
+    .inv-row { display:flex; align-items:center; gap:.6rem; margin-top:.75rem; }
+    .inv-lbl { font-size:10px; letter-spacing:.1em; color:var(--muted); }
+    .inv-no  { font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--ink); letter-spacing:.1em; }
+
+    /* footer */
+    .fband { margin-top:1.5rem; padding-top:.85rem; border-top:1px solid var(--line); display:grid; grid-template-columns:1fr auto; gap:1.5rem; align-items:end; }
+    .fblbl { font-size:9.5px; letter-spacing:.12em; color:var(--muted); font-weight:500; margin-bottom:.3rem; }
+    .fbrow { display:flex; gap:.6rem; font-size:11px; padding:.1rem 0; }
+    .fbk   { color:var(--muted); font-size:9.5px; min-width:26px; }
+    .fbv   { font-family:'JetBrains Mono',monospace; color:var(--ink); }
+    .pid   { text-align:right; }
+    .pidm  { font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:500; color:var(--ink); letter-spacing:.05em; }
+    .pids  { font-size:9.5px; color:var(--muted); margin-top:.2rem; }
+
+    /* sign */
+    .signs { display:grid; grid-template-columns:1fr 1fr; gap:3rem; margin-top:2rem; }
+    .sign  { border-top:1px solid var(--line); padding-top:.4rem; font-size:9.5px; letter-spacing:.1em; color:var(--muted); }
+
+    /* print bar */
+    .pbar { position:fixed; top:0; left:0; right:0; background:#1a1a1a; padding:.65rem 2rem; display:flex; align-items:center; gap:.75rem; z-index:100; }
+    .pbar-t { color:var(--muted); font-size:.75rem; font-family:'Noto Sans TC',sans-serif; flex:1; }
+    .pbtn { background:transparent; color:var(--muted); border:1px solid #555; padding:.28rem .9rem; font-family:'Noto Sans TC',sans-serif; font-size:.72rem; border-radius:2px; cursor:pointer; }
+    .ppbtn{ background:var(--red); color:#fff; border:none; padding:.28rem 1.1rem; font-family:'Noto Sans TC',sans-serif; font-size:.72rem; border-radius:2px; cursor:pointer; }
+    @media print { .pbar { display:none; } .page { padding:15mm 15mm 18mm; } }
+  </style>
+</head>
+<body>
+
+<div class="pbar no-print">
+  <span class="pbar-t">{{ project.name }}｜第 {{ period.period_no }} 期請款單</span>
+  <button class="pbtn" onclick="window.close()">關閉</button>
+  <button class="ppbtn" onclick="window.print()">列印 / 儲存 PDF</button>
+</div>
+
+<div class="page" style="margin-top:3rem">
+
+  <!-- header -->
+  <div class="hd">
+    <div class="logo-area">
+      {% if logo_b64 %}
+        <img src="data:image/png;base64,{{ logo_b64 }}" alt="{{ company.name }}">
+      {% else %}
+        <div class="logo-fallback">
+          <div class="en">{{ company.name_en or 'LA DURÉE' }}</div>
+        </div>
+      {% endif %}
+      <div class="co-info">
+        {{ company.name }}<br>
+        {% if company.tel %}{{ company.tel }}{% endif %}
+        {% if company.tel and company.email %}　{% endif %}
+        {% if company.email %}{{ company.email }}{% endif %}
+        {% if company.tax_id %}<br>統一編號：{{ company.tax_id }}{% endif %}
+        {% if company.address %}<br>{{ company.address }}{% endif %}
+      </div>
+    </div>
+    <div class="doc-right">
+      <div class="doc-title">請　款　單</div>
+      <div class="doc-meta">
+        開單日　{{ period.invoice_date or '—' }}<br>
+        第 {{ period.period_no }} 期，共 {{ total_periods }} 期
+      </div>
+    </div>
+  </div>
+
+  <!-- meta -->
+  <div class="meta">
+    <div>
+      <div class="mlabel">致</div>
+      <div class="mval lg">{{ project.client_name }}</div>
+      {% if project.address %}<div class="mval sub">{{ project.address }}</div>{% endif %}
+    </div>
+    <div>
+      <div class="mlabel">案名</div>
+      <div class="mval lg">{{ project.name }}</div>
+      <div class="mval sub">
+        {{ '設計費合約' if project.contract_type == 'design' else '工程款合約' }}
+        ｜合約總額 NT$ {{ fmt(project.contract_amount) }}
+      </div>
+    </div>
+  </div>
+  {% if period.label %}
+  <div style="font-size:12px;color:var(--mid);margin-bottom:1rem">說明：{{ period.label }}</div>
+  {% endif %}
+  {% if period.due_date %}
+  <div style="font-size:11px;color:var(--muted);margin-bottom:.5rem">應付日期：{{ period.due_date }}</div>
+  {% endif %}
+
+  <!-- period table -->
+  <div class="sec-title">各期明細</div>
+  <table class="ptbl">
+    <thead>
+      <tr><th>期次</th><th>說明</th><th>收款方式</th><th>實收日</th><th>金額</th></tr>
+    </thead>
+    <tbody>
+      {% for p in all_periods %}
+        {% if p.status == 'received' %}
+          <tr class="row-paid">
+        {% elif p.id == period.id %}
+          <tr class="row-cur">
+        {% else %}
+          <tr class="row-fut">
+        {% endif %}
+          <td>
+            {% if p.status == 'received' %}<span class="dot d-paid"></span>
+            {% elif p.id == period.id %}<span class="dot d-cur"></span>
+            {% else %}<span class="dot d-fut"></span>{% endif %}
+            <span class="pno">第 {{ p.period_no }} 期</span>
+          </td>
+          <td>{{ p.label }}</td>
+          <td>
+            {% if p.payment_method == 'transfer' %}
+              <span class="pay-tag pay-t">匯款{% if p.account_last5 %} *{{ p.account_last5 }}{% endif %}</span>
+            {% elif p.payment_method == 'cash' %}
+              <span class="pay-tag pay-c">現金</span>
+            {% elif p.payment_method == 'check' %}
+              <span class="pay-tag pay-ch">開票</span>
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:11px">{{ p.received_date or '—' }}</td>
+          <td>NT$ {{ fmt(p.amount) }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="subtotal">
+    <span class="stl">已收小計</span>
+    <span class="stv">NT$ {{ fmt(received_sum) }}</span>
+  </div>
+
+  <div style="height:1px;background:var(--line);margin:.1rem 0"></div>
+
+  <!-- amount -->
+  <div class="ablock">
+    <div class="albl">本期應付金額</div>
+    <div class="aval">NT$ {{ fmt(period.amount) }}</div>
+  </div>
+
+  {% if period.has_invoice and period.invoice_no %}
+  <div class="inv-row">
+    <span class="inv-lbl">發票號碼</span>
+    <span class="inv-no">{{ period.invoice_no }}</span>
+  </div>
+  {% endif %}
+
+  <!-- footer -->
+  <div class="fband">
+    <div>
+      {% if company.bank_name or company.bank_account %}
+      <div class="fblbl">匯款資訊</div>
+      {% if company.bank_name %}
+      <div class="fbrow"><span class="fbk">銀行</span><span class="fbv">{{ company.bank_name }}</span></div>
+      {% endif %}
+      {% if company.bank_account_name %}
+      <div class="fbrow"><span class="fbk">戶名</span><span class="fbv">{{ company.bank_account_name }}</span></div>
+      {% endif %}
+      {% if company.bank_account %}
+      <div class="fbrow"><span class="fbk">帳號</span><span class="fbv">{{ company.bank_account }}</span></div>
+      {% endif %}
+      {% endif %}
+    </div>
+    <div class="pid">
+      <div class="pidm">{{ project.name }}　{{ period.period_no }} ／ {{ total_periods }} 期</div>
+      <div class="pids">{{ company.name }}</div>
+    </div>
+  </div>
+
+  <div class="signs">
+    <div class="sign">開立人　{{ company.name }}</div>
+    <div class="sign">業主確認簽章</div>
+  </div>
+
+</div>
+</body>
+</html>

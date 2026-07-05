@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Laduree OPS{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+<nav>
+  <a class="nav-brand" href="{{ url_for('dashboard') }}">LA DURÉE<span>漣一設計</span></a>
+  <a href="{{ url_for('dashboard') }}"        class="nav-link {% if request.endpoint=='dashboard' %}active{% endif %}">總覽</a>
+  <a href="{{ url_for('project_list') }}"     class="nav-link {% if 'project' in request.endpoint %}active{% endif %}">業主請款</a>
+  <a href="{{ url_for('finance_vendors') }}"  class="nav-link {% if request.endpoint=='finance_vendors' %}active{% endif %}">廠商請款</a>
+  <a href="{{ url_for('finance_expenses') }}" class="nav-link {% if request.endpoint=='finance_expenses' %}active{% endif %}">公司支出</a>
+  <a href="{{ url_for('finance_report') }}"   class="nav-link {% if request.endpoint=='finance_report' %}active{% endif %}">財務報表</a>
+  <a href="{{ url_for('tasks') }}" class="nav-link {% if request.endpoint=='tasks' %}active{% endif %}">待辦</a>
+  <a href="{{ url_for('settings') }}" class="nav-link {% if request.endpoint=='settings' %}active{% endif %}">設定</a>
+</nav>
+{% block body %}{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

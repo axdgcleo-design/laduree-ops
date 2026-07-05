@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}公司設定 — 漣一設計{% endblock %}
+{% block body %}
+<div class="page" style="max-width:700px">
+  <div class="page-header">
+    <div>
+      <span class="page-title">公司設定</span>
+      <span class="page-subtitle">請款單抬頭與匯款資訊</span>
+    </div>
+  </div>
+
+  <!-- 備份/還原 -->
+  <div class="card" style="margin-bottom:1rem;border-left:3px solid var(--red)">
+    <div style="font-size:.78rem;font-weight:500;letter-spacing:.05em;margin-bottom:1rem">資料備份與還原</div>
+    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start">
+      <div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.5rem">定期備份，避免資料遺失</div>
+        <a href="/api/backup" class="btn btn-primary btn-sm" download>⬇ 匯出備份 JSON</a>
+      </div>
+      <div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.5rem">還原備份或匯入舊財務系統資料</div>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input type="file" id="restore-file" accept=".json" style="font-size:.78rem">
+          <button class="btn btn-outline btn-sm" onclick="doRestore()">匯入</button>
+        </div>
+        <div id="restore-result" style="margin-top:.5rem;font-size:.72rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="POST" enctype="multipart/form-data">
+
+      <!-- Logo -->
+      <div style="margin-bottom:1.5rem">
+        <div style="font-size:.7rem;letter-spacing:.1em;color:var(--muted);font-weight:500;margin-bottom:.75rem">公司 LOGO</div>
+        {% if logo_b64 %}
+        <div style="margin-bottom:.75rem">
+          <img src="data:image/png;base64,{{ logo_b64 }}" alt="logo" style="height:40px;width:auto;display:block;border:1px solid var(--line);padding:6px;background:#fff;border-radius:2px">
+        </div>
+        {% endif %}
+        <div class="form-group">
+          <label>{{ '更換' if logo_b64 else '上傳' }} Logo（PNG，建議深色字透明底）</label>
+          <input type="file" name="logo" accept="image/png,image/jpeg">
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>公司名稱（中文）</label>
+          <input type="text" name="name" value="{{ company.name }}" placeholder="漣一設計有限公司">
+        </div>
+        <div class="form-group">
+          <label>公司名稱（英文）</label>
+          <input type="text" name="name_en" value="{{ company.name_en }}" placeholder="LA DURÉE">
+        </div>
+        <div class="form-group">
+          <label>統一編號</label>
+          <input type="text" name="tax_id" value="{{ company.tax_id }}" placeholder="12345678">
+        </div>
+        <div class="form-group">
+          <label>連絡電話</label>
+          <input type="text" name="tel" value="{{ company.tel }}" placeholder="02-1234-5678">
+        </div>
+        <div class="form-group form-full">
+          <label>公司地址</label>
+          <input type="text" name="address" value="{{ company.address }}" placeholder="台北市...">
+        </div>
+        <div class="form-group form-full">
+          <label>Email</label>
+          <input type="email" name="email" value="{{ company.email }}" placeholder="studio@example.com">
+        </div>
+      </div>
+
+      <hr class="divider">
+      <div style="font-size:.7rem;letter-spacing:.08em;color:var(--muted);margin-bottom:1rem">匯款資訊（顯示於請款單底部）</div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>銀行名稱</label>
+          <input type="text" name="bank_name" value="{{ company.bank_name }}" placeholder="台灣銀行 古亭分行">
+        </div>
+        <div class="form-group">
+          <label>戶名</label>
+          <input type="text" name="bank_account_name" value="{{ company.bank_account_name }}" placeholder="漣一設計有限公司">
+        </div>
+        <div class="form-group form-full">
+          <label>帳號</label>
+          <input type="text" name="bank_account" value="{{ company.bank_account }}"
+                 placeholder="0000-000-000000"
+                 style="font-family:'JetBrains Mono',monospace;letter-spacing:.1em">
+        </div>
+      </div>
+
+      <hr class="divider">
+      <div class="actions-row">
+        <span class="spacer"></span>
+        <button type="submit" class="btn btn-primary">儲存設定</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function doRestore() {
+  const file = document.getElementById('restore-file').files[0];
+  if (!file) { alert('請選擇備份 JSON 檔案'); return; }
+  const text = await file.text();
+  let data;
+  try { data = JSON.parse(text); } catch(e) { alert('JSON 格式錯誤'); return; }
+  const res = document.getElementById('restore-result');
+  res.textContent = '匯入中...';
+  const r = await fetch('/api/restore', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+  });
+  const result = await r.json();
+  if (result.ok) {
+    const c = result.restored || result.imported || {};
+    const parts = Object.entries(c).map(([k,v]) => `${k}: ${v} 筆`).join('、');
+    res.innerHTML = `<span style="color:var(--green)">✓ 匯入成功${parts ? '：' + parts : ''}</span>`;
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    res.innerHTML = `<span style="color:var(--red)">匯入失敗</span>`;
+  }
+}
+</script>
+{% endblock %}

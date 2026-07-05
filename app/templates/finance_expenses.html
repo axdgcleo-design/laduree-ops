@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+{% block title %}公司支出 — Laduree OPS{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div><span class="page-title">公司支出</span></div>
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('add-modal').classList.add('open')">＋ 新增支出</button>
+  </div>
+
+  <div class="stats-row" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stat-box">
+      <div class="stat-label">支出總額</div>
+      <div class="stat-value red">{{ fmt(expenses|sum(attribute='amount')) }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">筆數</div>
+      <div class="stat-value">{{ expenses|length }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">最近一筆</div>
+      <div class="stat-value" style="font-size:.85rem">{{ expenses[0].date if expenses else '—' }}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if expenses %}
+    <div style="overflow-x:auto">
+    <table class="finance-table">
+      <thead>
+        <tr>
+          <th>日期</th><th>類別</th><th>項目</th><th>廠商</th>
+          <th class="r">金額</th><th>付款方式</th><th>發票</th><th>備註</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in expenses %}
+        <tr>
+          <td class="mono" style="color:var(--mid)">{{ e.date }}</td>
+          <td><span style="font-size:.72rem;padding:2px 7px;border-radius:2px;background:var(--cream)">{{ e.category }}</span></td>
+          <td style="font-weight:500">{{ e.item }}</td>
+          <td style="color:var(--mid)">{{ e.vendor or '—' }}</td>
+          <td class="r mono">{{ fmt(e.amount) }}</td>
+          <td>{{ {'transfer':'匯款','cash':'現金','check':'開票'}.get(e.payment_method, e.payment_method) }}</td>
+          <td>
+            {% if e.invoice_status == '有發票' %}
+              <span style="font-size:.72rem">{{ e.invoice_no or '有' }}</span>
+            {% else %}
+              <span style="font-size:.72rem;color:var(--muted)">無</span>
+            {% endif %}
+          </td>
+          <td style="max-width:160px;font-size:.72rem;color:var(--mid)" title="{{ e.note }}">{{ e.note[:25]+'...' if e.note and e.note|length>25 else e.note }}</td>
+          <td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteExp({{ e.id }})">×</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty"><div class="empty-title">尚無公司支出紀錄</div></div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="modal-overlay" id="add-modal">
+  <div class="modal">
+    <div class="modal-title">新增公司支出</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>日期</label>
+        <input type="date" id="ce-date">
+      </div>
+      <div class="form-group">
+        <label>類別</label>
+        <select id="ce-cat">
+          <option>行政費用</option><option>行銷費</option><option>設備採購</option><option>租金</option><option>其他</option>
+        </select>
+      </div>
+      <div class="form-group form-full">
+        <label>項目說明</label>
+        <input type="text" id="ce-item" placeholder="例：IG廣告">
+      </div>
+      <div class="form-group">
+        <label>廠商</label>
+        <input type="text" id="ce-vendor">
+      </div>
+      <div class="form-group">
+        <label>金額（NT$）</label>
+        <input type="number" id="ce-amount" min="0" step="1">
+      </div>
+      <div class="form-group">
+        <label>付款方式</label>
+        <select id="ce-pay">
+          <option value="transfer">匯款</option>
+          <option value="cash">現金</option>
+          <option value="check">開票</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>發票</label>
+        <select id="ce-inv"><option>無發票</option><option>有發票</option></select>
+      </div>
+      <div class="form-group">
+        <label>發票號碼</label>
+        <input type="text" id="ce-invno">
+      </div>
+      <div class="form-group form-full">
+        <label>備註</label>
+        <input type="text" id="ce-note">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="document.getElementById('add-modal').classList.remove('open')">取消</button>
+      <button class="btn btn-primary" onclick="submitCE()">新增</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function submitCE(){
+  const r=await fetch('/api/expense',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date:document.getElementById('ce-date').value,
+      category:document.getElementById('ce-cat').value,
+      item:document.getElementById('ce-item').value,
+      vendor:document.getElementById('ce-vendor').value,
+      amount:parseFloat(document.getElementById('ce-amount').value)||0,
+      payment_method:document.getElementById('ce-pay').value,
+      invoice_status:document.getElementById('ce-inv').value,
+      invoice_no:document.getElementById('ce-invno').value,
+      note:document.getElementById('ce-note').value})
+  });
+  if((await r.json()).ok) location.reload();
+}
+async function deleteExp(id){
+  if(!confirm('確定刪除？')) return;
+  const r=await fetch(`/api/expense/${id}`,{method:'DELETE'});
+  if((await r.json()).ok) location.reload();
+}
+document.querySelectorAll('.modal-overlay').forEach(o=>{
+  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
+});
+</script>
+{% endblock %}

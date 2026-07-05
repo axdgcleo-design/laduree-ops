@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}業主請款 — Laduree OPS{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <span class="page-title">業主請款</span>
+      <span class="page-subtitle">{{ projects|length }} 個案場</span>
+    </div>
+    <a href="{{ url_for('project_new') }}" class="btn btn-primary">＋ 新增案場</a>
+  </div>
+
+  {% if projects %}
+    {% set tc = namespace(v=0) %}{% set tr = namespace(v=0) %}{% set tp = namespace(v=0) %}
+    {% for p in projects %}
+      {% set st = stats[p.id] %}
+      {% set tc.v = tc.v + p.design_contract + p.engineering_contract %}
+      {% set tr.v = tr.v + st.total_received %}
+      {% set tp.v = tp.v + st.total_pending %}
+    {% endfor %}
+
+    <div class="stats-row">
+      <div class="stat-box"><div class="stat-label">案場數</div><div class="stat-value">{{ projects|length }}</div></div>
+      <div class="stat-box"><div class="stat-label">合約總額</div><div class="stat-value">{{ fmt(tc.v) }}</div></div>
+      <div class="stat-box"><div class="stat-label">已收款</div><div class="stat-value green">{{ fmt(tr.v) }}</div></div>
+      <div class="stat-box"><div class="stat-label">待請款</div><div class="stat-value red">{{ fmt(tp.v) }}</div></div>
+    </div>
+
+    {% for p in projects %}
+      {% set st = stats[p.id] %}
+      {% set total_contract = p.design_contract + p.engineering_contract %}
+      {% set pct = (st.total_received / total_contract * 100)|int if total_contract > 0 else 0 %}
+      <a class="project-card" href="{{ url_for('project_detail', pid=p.id) }}">
+        <div class="project-card-header">
+          <span class="project-code">{{ p.code }}</span>
+          <span class="project-name">{{ p.name }}</span>
+          <span class="project-client">{{ p.client_name }}</span>
+          {% if p.design_contract > 0 %}<span class="type-badge badge-design">設計費</span>{% endif %}
+          {% if p.engineering_contract > 0 %}<span class="type-badge badge-construction">工程款</span>{% endif %}
+          <span class="status status-{{ p.status }}">{{ {'active':'進行中','completed':'已完工','paused':'暫停'}[p.status] }}</span>
+        </div>
+        <div class="money-row">
+          {% if p.design_contract > 0 %}<span>設計費 <strong>NT$ {{ fmt(p.design_contract) }}</strong></span>{% endif %}
+          {% if p.engineering_contract > 0 %}<span>工程費 <strong>NT$ {{ fmt(p.engineering_contract) }}</strong></span>{% endif %}
+          <span>已收 <strong style="color:var(--green)">NT$ {{ fmt(st.total_received) }}</strong></span>
+          <span>待收 <strong style="color:var(--red)">NT$ {{ fmt(st.total_pending) }}</strong></span>
+          <span>{{ pct }}% 已收</span>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:{{ pct }}%"></div>
+        </div>
+      </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      <div class="empty-title">尚無案場</div>
+      <div class="empty-sub">點擊右上角「新增案場」建立第一個案子</div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

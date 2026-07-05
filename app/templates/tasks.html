@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+{% block title %}待辦事項 — Laduree OPS{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <span class="page-title">待辦 ／ 缺失</span>
+      <span class="page-subtitle">{{ open_tasks|length }} 筆待處理</span>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('add-modal').classList.add('open')">＋ 新增</button>
+  </div>
+
+  <!-- 篩選 -->
+  <div style="display:flex;gap:.65rem;margin-bottom:1.25rem;flex-wrap:wrap">
+    <a href="{{ url_for('tasks') }}" class="btn {% if task_type=='all' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">全部</a>
+    <a href="{{ url_for('tasks', type='todo') }}" class="btn {% if task_type=='todo' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">✅ 待辦</a>
+    <a href="{{ url_for('tasks', type='defect') }}" class="btn {% if task_type=='defect' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">🔴 缺失</a>
+    <select onchange="location='{{ url_for('tasks') }}?project_id='+this.value+'&type={{ task_type }}'"
+            style="padding:.3rem .75rem;border:1px solid var(--line);background:var(--cream);border-radius:2px;font-size:.78rem">
+      <option value="">所有案場</option>
+      {% for p in projects %}
+      <option value="{{ p.id }}" {% if selected_project == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- 待處理 -->
+  {% if open_tasks %}
+  <div class="card" style="margin-bottom:1rem">
+    <div style="font-size:.7rem;letter-spacing:.1em;color:var(--muted);font-weight:500;margin-bottom:.85rem">待處理 {{ open_tasks|length }} 筆</div>
+    {% for t in open_tasks %}
+    <div style="display:flex;align-items:flex-start;gap:.75rem;padding:.65rem 0;border-bottom:1px solid #f0ece6" id="task-{{ t.id }}">
+      <div style="padding-top:.2rem">
+        {% if t.type == 'defect' %}
+          <span style="width:10px;height:10px;border-radius:50%;background:var(--red);display:inline-block"></span>
+        {% else %}
+          <span style="width:10px;height:10px;border-radius:50%;background:var(--amber);display:inline-block"></span>
+        {% endif %}
+      </div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+          <span style="font-size:.82rem;font-weight:500">{{ t.title }}</span>
+          {% if t.type == 'defect' %}
+            <span style="font-size:.62rem;padding:1px 7px;border-radius:2px;background:var(--red-bg);color:var(--red)">缺失</span>
+          {% else %}
+            <span style="font-size:.62rem;padding:1px 7px;border-radius:2px;background:var(--amber-bg);color:var(--amber)">待辦</span>
+          {% endif %}
+          {% if t.priority == 'high' %}
+            <span style="font-size:.62rem;padding:1px 7px;border-radius:2px;background:#fee2e2;color:#dc2626">緊急</span>
+          {% endif %}
+          {% if t.source == 'telegram' %}
+            <span style="font-size:.62rem;color:var(--muted)">📱 Bot</span>
+          {% endif %}
+        </div>
+        {% if t.description %}
+          <div style="font-size:.76rem;color:var(--mid);margin-top:.2rem">{{ t.description }}</div>
+        {% endif %}
+        <div style="display:flex;gap:.75rem;margin-top:.3rem;font-size:.7rem;color:var(--muted)">
+          {% if t.project_name %}<span>📍 {{ t.project_name }}</span>{% endif %}
+          {% if t.due_date %}<span>📅 {{ t.due_date }}</span>{% endif %}
+          <span>{{ t.created_at[:10] if t.created_at else '' }}</span>
+        </div>
+      </div>
+      <div class="actions-row">
+        <button class="btn btn-outline btn-sm" style="color:var(--green);border-color:var(--green)"
+                onclick="closeTask({{ t.id }})">完成</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red)"
+                onclick="deleteTask({{ t.id }})">×</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card" style="margin-bottom:1rem">
+    <div class="empty"><div class="empty-title">目前沒有待處理事項 🎉</div></div>
+  </div>
+  {% endif %}
+
+  <!-- 已完成 -->
+  {% if closed_tasks %}
+  <div class="card">
+    <div style="font-size:.7rem;letter-spacing:.1em;color:var(--muted);font-weight:500;margin-bottom:.85rem;cursor:pointer"
+         onclick="document.getElementById('closed-list').style.display=document.getElementById('closed-list').style.display?'':''">
+      已完成 {{ closed_tasks|length }} 筆
+    </div>
+    <div id="closed-list">
+      {% for t in closed_tasks[:20] %}
+      <div style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid #f0ece6;opacity:.6">
+        <span style="font-size:.82rem;text-decoration:line-through;flex:1">{{ t.title }}</span>
+        <span style="font-size:.7rem;color:var(--muted)">{{ t.project_name or '' }}</span>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteTask({{ t.id }})">×</button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add Modal -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal">
+    <div class="modal-title">新增待辦 ／ 缺失</div>
+    <div style="display:flex;gap:.65rem;margin-bottom:1rem">
+      <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.84rem">
+        <input type="radio" name="task-type" value="todo" checked> ✅ 待辦事項
+      </label>
+      <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.84rem">
+        <input type="radio" name="task-type" value="defect"> 🔴 缺失
+      </label>
+    </div>
+    <div class="form-group" style="margin-bottom:.85rem">
+      <label>標題</label>
+      <input type="text" id="task-title" placeholder="例：確認鋁窗尺寸 / 二樓防水未完成">
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>案場</label>
+        <select id="task-project">
+          <option value="">— 選擇案場 —</option>
+          {% for p in projects %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>優先度</label>
+        <select id="task-priority">
+          <option value="normal">一般</option>
+          <option value="high">緊急</option>
+          <option value="low">低</option>
+        </select>
+      </div>
+      <div class="form-group form-full">
+        <label>截止日期</label>
+        <input type="date" id="task-due">
+      </div>
+      <div class="form-group form-full">
+        <label>說明</label>
+        <textarea id="task-desc" style="min-height:60px"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="document.getElementById('add-modal').classList.remove('open')">取消</button>
+      <button class="btn btn-primary" onclick="submitTask()">新增</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function submitTask() {
+  const title = document.getElementById('task-title').value.trim();
+  if (!title) { alert('請填寫標題'); return; }
+  const type = document.querySelector('[name="task-type"]:checked').value;
+  const r = await fetch('/api/task', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      title, type,
+      project_id: document.getElementById('task-project').value || null,
+      priority:   document.getElementById('task-priority').value,
+      due_date:   document.getElementById('task-due').value,
+      description:document.getElementById('task-desc').value,
+      source: 'web'
+    })
+  });
+  if ((await r.json()).ok) location.reload();
+}
+
+async function closeTask(id) {
+  const r = await fetch(`/api/task/${id}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({status:'closed'})
+  });
+  if ((await r.json()).ok) {
+    document.getElementById('task-'+id).style.opacity = '0.4';
+    setTimeout(() => location.reload(), 500);
+  }
+}
+
+async function deleteTask(id) {
+  if (!confirm('確定刪除？')) return;
+  const r = await fetch(`/api/task/${id}`, {method:'DELETE'});
+  if ((await r.json()).ok) location.reload();
+}
+
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target===o) o.classList.remove('open'); });
+});
+</script>
+{% endblock %}

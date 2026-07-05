@@ -1,0 +1,285 @@
+{% extends 'base.html' %}
+{% block title %}{{ '編輯案場' if project else '新增案場' }} — Laduree OPS{% endblock %}
+{% block body %}
+<div class="page" style="max-width:780px">
+  <div class="page-header">
+    <div>
+      <span class="page-title">{{ '編輯案場' if project else '新增案場' }}</span>
+      {% if project %}<span class="page-subtitle">{{ project.code }}</span>{% endif %}
+    </div>
+    <a href="{{ url_for('project_detail', pid=project.id) if project else url_for('project_list') }}" class="btn btn-outline">取消</a>
+  </div>
+
+  <div class="card">
+    <form method="POST" id="main-form">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>案名</label>
+          <input type="text" name="name" required value="{{ project.name if project else '' }}" placeholder="例：大安區宋宅">
+        </div>
+        <div class="form-group">
+          <label>業主姓名</label>
+          <input type="text" name="client_name" value="{{ project.client_name if project else '' }}" placeholder="例：宋先生">
+        </div>
+        <div class="form-group">
+          <label>業主電話</label>
+          <input type="text" name="client_tel" value="{{ project.client_tel if project else '' }}">
+        </div>
+        <div class="form-group">
+          <label>業主 Email</label>
+          <input type="email" name="client_email" value="{{ project.client_email if project else '' }}">
+        </div>
+        <div class="form-group">
+          <label>開工日期</label>
+          <input type="date" name="start_date" value="{{ project.start_date if project else '' }}">
+        </div>
+        {% if project %}
+        <div class="form-group">
+          <label>狀態</label>
+          <select name="status">
+            <option value="active"    {{ 'selected' if project.status=='active' }}>進行中</option>
+            <option value="completed" {{ 'selected' if project.status=='completed' }}>已完工</option>
+            <option value="paused"    {{ 'selected' if project.status=='paused' }}>暫停</option>
+          </select>
+        </div>
+        {% endif %}
+        <div class="form-group form-full">
+          <label>地址</label>
+          <input type="text" name="address" value="{{ project.address if project else '' }}" placeholder="施工地址">
+        </div>
+        <div class="form-group form-full">
+          <label>備註</label>
+          <textarea name="note">{{ project.note if project else '' }}</textarea>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- 合約金額 -->
+      <div style="font-size:.82rem;font-weight:500;letter-spacing:.05em;margin-bottom:1rem">合約金額</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>設計費合約（NT$）</label>
+          <input type="number" name="design_contract" id="design-contract" min="0" step="1"
+                 value="{{ project.design_contract|int if project else '' }}"
+                 placeholder="0" oninput="recalcAll()">
+        </div>
+        <div class="form-group">
+          <label>稅別</label>
+          <select name="design_tax">
+            <option value="未稅" {{ 'selected' if project and project.design_tax=='未稅' }}>未稅</option>
+            <option value="含稅" {{ 'selected' if project and project.design_tax=='含稅' }}>含稅</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>工程款合約（NT$）</label>
+          <input type="number" name="engineering_contract" id="eng-contract" min="0" step="1"
+                 value="{{ project.engineering_contract|int if project else '' }}"
+                 placeholder="0" oninput="recalcAll()">
+        </div>
+        <div class="form-group">
+          <label>稅別</label>
+          <select name="engineering_tax">
+            <option value="未稅" {{ 'selected' if project and project.engineering_tax=='未稅' }}>未稅</option>
+            <option value="含稅" {{ 'selected' if project and project.engineering_tax=='含稅' }}>含稅</option>
+          </select>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- 分期設定 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <div>
+          <div style="font-size:.82rem;font-weight:500;letter-spacing:.05em">請款分期設定</div>
+          {% if project %}<div style="font-size:.68rem;color:var(--muted);margin-top:.2rem">只更新「待請款」期數</div>{% endif %}
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <button type="button" class="btn btn-outline btn-sm" onclick="togglePreset()">套用範本</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="addRow('design')">＋ 設計費期數</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="addRow('construction')">＋ 工程款期數</button>
+        </div>
+      </div>
+
+      <div id="preset-panel" style="display:none;background:var(--cream);border:1px solid var(--line);border-radius:3px;padding:1rem;margin-bottom:1rem">
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.6rem;letter-spacing:.07em">設計費範本</div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.85rem">
+          <button type="button" class="btn btn-outline btn-sm" onclick="applyPreset('d3')">3期</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="applyPreset('d4')">4期</button>
+        </div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.6rem;letter-spacing:.07em">工程款範本</div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button type="button" class="btn btn-outline btn-sm" onclick="applyPreset('e4')">4期</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="applyPreset('e5')">5期</button>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem" id="period-table">
+          <thead>
+            <tr>
+              <th style="text-align:left;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .5rem;border-bottom:1px solid var(--line);width:60px">合約</th>
+              <th style="text-align:left;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .5rem;border-bottom:1px solid var(--line);width:44px">期次</th>
+              <th style="text-align:left;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .5rem;border-bottom:1px solid var(--line)">說明</th>
+              <th style="text-align:right;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .5rem;border-bottom:1px solid var(--line);width:80px">%</th>
+              <th style="text-align:right;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .5rem;border-bottom:1px solid var(--line);width:120px">金額 NT$</th>
+              <th style="text-align:left;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .5rem;border-bottom:1px solid var(--line);width:135px">應收日期</th>
+              <th style="width:32px;border-bottom:1px solid var(--line)"></th>
+            </tr>
+          </thead>
+          <tbody id="period-tbody">
+            {% if existing_periods %}
+              {% set d_count = namespace(v=0) %}{% set e_count = namespace(v=0) %}
+              {% for p in existing_periods %}
+                {% if p.contract_type == 'design' %}{% set d_count.v = d_count.v + 1 %}{% else %}{% set e_count.v = e_count.v + 1 %}{% endif %}
+                {% set ct_label = '設計費' if p.contract_type == 'design' else '工程款' %}
+                {% set ct_color = '#3730a3' if p.contract_type == 'design' else '#92400e' %}
+                {% set ct_bg    = '#eef2ff' if p.contract_type == 'design' else '#fef3c7' %}
+                {% set n = d_count.v if p.contract_type == 'design' else e_count.v %}
+                <tr class="period-row" data-ctype="{{ p.contract_type }}">
+                  <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6">
+                    <span style="font-size:.62rem;padding:2px 6px;border-radius:2px;background:{{ ct_bg }};color:{{ ct_color }}">{{ ct_label }}</span>
+                    <input type="hidden" name="period_ctype" value="{{ p.contract_type }}">
+                  </td>
+                  <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted)">第 <span class="rnum">{{ n }}</span></td>
+                  <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6">
+                    <input type="text" name="period_label" value="{{ p.label }}" style="width:100%;padding:.28rem .45rem;border:1px solid var(--line);background:var(--cream);border-radius:2px;font-size:.8rem">
+                  </td>
+                  <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6">
+                    {% set base = project.design_contract if p.contract_type == 'design' else project.engineering_contract %}
+                    {% set pct = (p.amount / base * 100)|round(1) if base > 0 else 0 %}
+                    <input type="number" name="period_pct" value="{{ pct }}" min="0" max="100" step="0.1" class="pct-input" data-ctype="{{ p.contract_type }}"
+                           style="width:100%;padding:.28rem .45rem;border:1px solid var(--line);background:var(--cream);border-radius:2px;font-size:.8rem;text-align:right" oninput="recalcRow(this)">
+                  </td>
+                  <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6;text-align:right;font-family:'JetBrains Mono',monospace;font-size:.75rem" class="amt-cell">{{ '{:,.0f}'.format(p.amount) }}</td>
+                  <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6">
+                    <input type="date" name="period_due" value="{{ p.due_date }}" style="width:100%;padding:.28rem .45rem;border:1px solid var(--line);background:var(--cream);border-radius:2px;font-size:.8rem">
+                  </td>
+                  <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6;text-align:center">
+                    <button type="button" onclick="removeRow(this)" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem">×</button>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:2rem;margin-top:.65rem;padding:.4rem .5rem;border-top:1px solid var(--line);font-size:.78rem">
+        <span style="color:var(--muted);font-size:.68rem">設計費合計</span>
+        <span id="d-total-pct" style="font-family:'JetBrains Mono',monospace;font-weight:500;min-width:40px;text-align:right">0%</span>
+        <span id="d-total-amt" style="font-family:'JetBrains Mono',monospace;font-weight:500;min-width:100px;text-align:right">NT$ 0</span>
+        <span style="color:var(--muted);font-size:.68rem;margin-left:.75rem">工程款合計</span>
+        <span id="e-total-pct" style="font-family:'JetBrains Mono',monospace;font-weight:500;min-width:40px;text-align:right">0%</span>
+        <span id="e-total-amt" style="font-family:'JetBrains Mono',monospace;font-weight:500;min-width:100px;text-align:right">NT$ 0</span>
+        <div style="width:32px"></div>
+      </div>
+
+      <hr class="divider">
+      <div class="actions-row">
+        <span class="spacer"></span>
+        <button type="submit" class="btn btn-primary">{{ '儲存' if project else '建立案場' }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PRESETS = {
+  d3:[{l:'簽約款',p:30,ct:'design'},{l:'開工款',p:30,ct:'design'},{l:'完工款',p:40,ct:'design'}],
+  d4:[{l:'簽約款',p:30,ct:'design'},{l:'開工款',p:20,ct:'design'},{l:'期中款',p:20,ct:'design'},{l:'完工款',p:30,ct:'design'}],
+  e4:[{l:'簽約款',p:10,ct:'construction'},{l:'開工款',p:30,ct:'construction'},{l:'期中款',p:30,ct:'construction'},{l:'完工款',p:30,ct:'construction'}],
+  e5:[{l:'簽約款',p:10,ct:'construction'},{l:'開工款',p:25,ct:'construction'},{l:'期中款',p:25,ct:'construction'},{l:'驗收款',p:25,ct:'construction'},{l:'完工款',p:15,ct:'construction'}],
+};
+
+function getAmt(ct) {
+  const id = ct==='design' ? 'design-contract' : 'eng-contract';
+  return parseFloat(document.getElementById(id).value)||0;
+}
+function fmt(n){ return Math.round(n).toLocaleString(); }
+
+function recalcRow(inp){
+  const row = inp.closest('tr');
+  const ct  = inp.dataset.ctype;
+  const pct = parseFloat(inp.value)||0;
+  row.querySelector('.amt-cell').textContent = fmt(getAmt(ct)*pct/100);
+  updateTotals();
+}
+
+function recalcAll(){
+  document.querySelectorAll('.pct-input').forEach(recalcRow);
+}
+
+function updateTotals(){
+  ['design','construction'].forEach(ct=>{
+    const inps = [...document.querySelectorAll(`.pct-input[data-ctype="${ct}"]`)];
+    const totalPct = inps.reduce((a,b)=>a+(parseFloat(b.value)||0),0);
+    const totalAmt = getAmt(ct)*totalPct/100;
+    const pfx = ct==='design'?'d':'e';
+    document.getElementById(pfx+'-total-pct').textContent = Math.round(totalPct*10)/10+'%';
+    document.getElementById(pfx+'-total-pct').style.color = (inps.length>0&&Math.abs(totalPct-100)>0.5)?'var(--red)':'var(--ink)';
+    document.getElementById(pfx+'-total-amt').textContent = 'NT$ '+fmt(totalAmt);
+  });
+}
+
+function renumber(){
+  const counts={};
+  document.querySelectorAll('#period-tbody tr.period-row').forEach(tr=>{
+    const ct=tr.dataset.ctype;
+    counts[ct]=(counts[ct]||0)+1;
+    const span=tr.querySelector('.rnum');
+    if(span) span.textContent=counts[ct];
+  });
+}
+
+function addRow(ct, label='', pct='', due=''){
+  const tbody=document.getElementById('period-tbody');
+  const ctLabel=ct==='design'?'設計費':'工程款';
+  const ctBg=ct==='design'?'#eef2ff':'#fef3c7';
+  const ctColor=ct==='design'?'#3730a3':'#92400e';
+  const count=tbody.querySelectorAll(`tr[data-ctype="${ct}"]`).length+1;
+  const amt=pct?fmt(getAmt(ct)*parseFloat(pct)/100):'0';
+  const tr=document.createElement('tr');
+  tr.className='period-row'; tr.dataset.ctype=ct;
+  tr.innerHTML=`
+    <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6">
+      <span style="font-size:.62rem;padding:2px 6px;border-radius:2px;background:${ctBg};color:${ctColor}">${ctLabel}</span>
+      <input type="hidden" name="period_ctype" value="${ct}">
+    </td>
+    <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted)">第 <span class="rnum">${count}</span></td>
+    <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6">
+      <input type="text" name="period_label" value="${label}" style="width:100%;padding:.28rem .45rem;border:1px solid var(--line);background:var(--cream);border-radius:2px;font-size:.8rem" placeholder="例：簽約款">
+    </td>
+    <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6">
+      <input type="number" name="period_pct" value="${pct}" min="0" max="100" step="0.1" class="pct-input" data-ctype="${ct}"
+             style="width:100%;padding:.28rem .45rem;border:1px solid var(--line);background:var(--cream);border-radius:2px;font-size:.8rem;text-align:right" oninput="recalcRow(this)">
+    </td>
+    <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6;text-align:right;font-family:'JetBrains Mono',monospace;font-size:.75rem" class="amt-cell">${amt}</td>
+    <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6">
+      <input type="date" name="period_due" value="${due}" style="width:100%;padding:.28rem .45rem;border:1px solid var(--line);background:var(--cream);border-radius:2px;font-size:.8rem">
+    </td>
+    <td style="padding:.45rem .5rem;border-bottom:1px solid #f0ece6;text-align:center">
+      <button type="button" onclick="removeRow(this)" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem">×</button>
+    </td>`;
+  tbody.appendChild(tr);
+  updateTotals();
+}
+
+function removeRow(btn){ btn.closest('tr').remove(); renumber(); updateTotals(); }
+function togglePreset(){ const p=document.getElementById('preset-panel'); p.style.display=p.style.display==='none'?'':'none'; }
+
+function applyPreset(key){
+  const rows=document.querySelectorAll('#period-tbody tr.period-row');
+  const ct=key[0]==='d'?'design':'construction';
+  const existing=[...rows].filter(r=>r.dataset.ctype===ct);
+  if(existing.length>0&&!confirm('套用範本會取代目前的'+( ct==='design'?'設計費':'工程款')+'分期，確定嗎？')) return;
+  existing.forEach(r=>r.remove());
+  PRESETS[key].forEach(p=>addRow(p.ct,p.l,p.p,''));
+  document.getElementById('preset-panel').style.display='none';
+}
+
+updateTotals();
+</script>
+{% endblock %}

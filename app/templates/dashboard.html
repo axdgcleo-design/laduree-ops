@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% block title %}總覽 — Laduree OPS{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <span class="page-title">總覽</span>
+      <span class="page-subtitle">Laduree OPS</span>
+    </div>
+    <div class="actions-row">
+      <a href="{{ url_for('project_new') }}" class="btn btn-primary btn-sm">＋ 新增案場</a>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-box"><div class="stat-label">進行中案場</div><div class="stat-value">{{ projects|selectattr('status','eq','active')|list|length }}</div></div>
+    <div class="stat-box"><div class="stat-label">設計費合約總額</div><div class="stat-value">{{ fmt(total_design_contract) }}</div></div>
+    <div class="stat-box"><div class="stat-label">工程費合約總額</div><div class="stat-value">{{ fmt(total_eng_contract) }}</div></div>
+    <div class="stat-box"><div class="stat-label">已收款</div><div class="stat-value green">{{ fmt(total_received) }}</div></div>
+  </div>
+
+  {% if projects %}
+  <div class="card">
+    <div style="font-size:.72rem;font-weight:500;letter-spacing:.08em;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:.4rem;margin-bottom:.85rem">案場合約總覽</div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:.8rem;font-family:'Microsoft JhengHei','微軟正黑體',sans-serif">
+      <thead>
+        <tr>
+          <th style="text-align:left;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .6rem;border-bottom:1px solid var(--line)">業主 ／ 合約</th>
+          <th style="font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .6rem;border-bottom:1px solid var(--line)">類型</th>
+          <th style="font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .6rem;border-bottom:1px solid var(--line)">狀態</th>
+          <th style="text-align:right;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .6rem;border-bottom:1px solid var(--line)">合約金額</th>
+          <th style="text-align:right;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .6rem;border-bottom:1px solid var(--line)">已收</th>
+          <th style="text-align:right;font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .6rem;border-bottom:1px solid var(--line)">待收</th>
+          <th style="font-size:.65rem;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:.4rem .6rem;border-bottom:1px solid var(--line);min-width:100px">進度</th>
+          <th style="border-bottom:1px solid var(--line);width:50px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in projects %}
+          {% set st = stats[p.id] %}
+          {# 業主標題列 #}
+          <tr>
+            <td colspan="8" style="padding:.5rem .6rem .2rem;background:#faf8f5;border-bottom:none">
+              <span style="font-weight:500;font-size:.82rem">{{ p.client_name or '（未填業主）' }}</span>
+              <span style="font-size:.72rem;color:var(--mid);margin-left:.5rem">{{ p.name }}</span>
+              <span style="font-size:.65rem;color:var(--muted);margin-left:.5rem">{{ p.code }}</span>
+            </td>
+          </tr>
+          {# 設計費列 #}
+          {% if p.design_contract > 0 %}
+            {% set dpct = (st.design_received / p.design_contract * 100)|int %}
+            <tr>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;padding-left:1.5rem;border-left:2px solid var(--line);background:#fff">設計費合約</td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;background:#fff"><span class="type-badge badge-design">設計費</span></td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;background:#fff"><span class="status status-{{ p.status }}">{{ {'active':'進行中','completed':'已完工','paused':'暫停'}[p.status] }}</span></td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;text-align:right;font-family:'Courier New',monospace;font-size:.76rem;background:#fff">{{ fmt(p.design_contract) }}</td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;text-align:right;font-family:'Courier New',monospace;font-size:.76rem;color:var(--green);background:#fff">{{ fmt(st.design_received) }}</td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;text-align:right;font-family:'Courier New',monospace;font-size:.76rem;color:var(--red);background:#fff">{{ fmt(st.design_pending) }}</td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;background:#fff">
+                <div style="display:flex;align-items:center;gap:.4rem">
+                  <div style="flex:1;height:3px;background:var(--line);border-radius:2px;overflow:hidden;min-width:60px">
+                    <div style="height:100%;background:var(--red);width:{{ dpct }}%;border-radius:2px"></div>
+                  </div>
+                  <span style="font-size:.65rem;color:var(--muted);min-width:28px">{{ dpct }}%</span>
+                </div>
+              </td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;text-align:right;background:#fff">
+                <a href="{{ url_for('project_detail', pid=p.id) }}" style="color:var(--red);text-decoration:none;font-size:.7rem">請款 →</a>
+              </td>
+            </tr>
+          {% endif %}
+          {# 工程費列 #}
+          {% if p.engineering_contract > 0 %}
+            {% set epct = (st.eng_received / p.engineering_contract * 100)|int %}
+            <tr>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;padding-left:1.5rem;border-left:2px dashed var(--line);background:#fff">工程款合約</td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;background:#fff"><span class="type-badge badge-construction">工程款</span></td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;background:#fff"><span class="status status-{{ p.status }}">{{ {'active':'進行中','completed':'已完工','paused':'暫停'}[p.status] }}</span></td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;text-align:right;font-family:'Courier New',monospace;font-size:.76rem;background:#fff">{{ fmt(p.engineering_contract) }}</td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;text-align:right;font-family:'Courier New',monospace;font-size:.76rem;color:var(--green);background:#fff">{{ fmt(st.eng_received) }}</td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;text-align:right;font-family:'Courier New',monospace;font-size:.76rem;color:var(--red);background:#fff">{{ fmt(st.eng_pending) }}</td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;background:#fff">
+                <div style="display:flex;align-items:center;gap:.4rem">
+                  <div style="flex:1;height:3px;background:var(--line);border-radius:2px;overflow:hidden;min-width:60px">
+                    <div style="height:100%;background:#92400e;width:{{ epct }}%;border-radius:2px"></div>
+                  </div>
+                  <span style="font-size:.65rem;color:var(--muted);min-width:28px">{{ epct }}%</span>
+                </div>
+              </td>
+              <td style="padding:.45rem .6rem;border-bottom:1px solid #f0ece6;text-align:right;background:#fff">
+                <a href="{{ url_for('project_detail', pid=p.id) }}" style="color:var(--red);text-decoration:none;font-size:.7rem">請款 →</a>
+              </td>
+            </tr>
+          {% endif %}
+          {# 兩個合約都沒有金額 #}
+          {% if p.design_contract == 0 and p.engineering_contract == 0 %}
+            <tr>
+              <td colspan="8" style="padding:.4rem .6rem .4rem 1.5rem;border-bottom:1px solid #f0ece6;font-size:.75rem;color:var(--muted);border-left:2px solid var(--line)">
+                尚未設定合約金額
+                <a href="{{ url_for('project_edit', pid=p.id) }}" style="color:var(--red);margin-left:.5rem;font-size:.7rem">編輯 →</a>
+              </td>
+            </tr>
+          {% endif %}
+          {# 間距 #}
+          <tr><td colspan="8" style="padding:.3rem 0;background:var(--cream);border:none"></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty">
+      <div class="empty-title">尚無案場資料</div>
+      <div class="empty-sub" style="margin-top:.75rem">
+        <a href="{{ url_for('project_new') }}" class="btn btn-primary btn-sm">新增案場</a>
+        &nbsp; 或 &nbsp;
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('import-section').style.display=''">匯入財務備份</button>
+      </div>
+    </div>
+    <div id="import-section" style="display:none;margin-top:1.5rem;border-top:1px solid var(--line);padding-top:1.25rem">
+      <div style="font-size:.78rem;color:var(--mid);margin-bottom:.75rem">選擇財務系統備份 JSON 檔案匯入</div>
+      <input type="file" id="import-file" accept=".json" style="font-size:.82rem">
+      <button class="btn btn-primary btn-sm" style="margin-left:.75rem" onclick="doImport()">匯入</button>
+      <div id="import-result" style="margin-top:.75rem;font-size:.78rem"></div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if projects %}
+  <div style="text-align:right;margin-top:.5rem">
+    <button class="btn btn-outline btn-sm" onclick="document.getElementById('import-section').style.display=''">匯入財務備份 JSON</button>
+    <div id="import-section" style="display:none;margin-top:.75rem;text-align:left;background:var(--white);border:1px solid var(--line);border-radius:3px;padding:1.25rem">
+      <div style="font-size:.78rem;color:var(--mid);margin-bottom:.75rem">選擇財務系統備份 JSON 檔案（不會覆蓋現有資料）</div>
+      <input type="file" id="import-file" accept=".json" style="font-size:.82rem">
+      <button class="btn btn-primary btn-sm" style="margin-left:.75rem" onclick="doImport()">匯入</button>
+      <div id="import-result" style="margin-top:.75rem;font-size:.78rem"></div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function doImport() {
+  const file = document.getElementById('import-file').files[0];
+  if (!file) { alert('請選擇 JSON 檔案'); return; }
+  const text = await file.text();
+  let data;
+  try { data = JSON.parse(text); } catch(e) { alert('JSON 格式錯誤'); return; }
+  const res = await fetch('/api/import', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+  });
+  const r = await res.json();
+  if (r.ok) {
+    const i = r.imported;
+    document.getElementById('import-result').innerHTML =
+      `<span style="color:var(--green)">✓ 匯入成功：案場 ${i.projects}、請款期數 ${i.periods}、廠商付款 ${i.vendor_payments}、公司支出 ${i.company_expenses}、追加工程 ${i.extra_works}</span>`;
+    setTimeout(() => location.reload(), 1500);
+  }
+}
+</script>
+{% endblock %}
