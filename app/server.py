@@ -1,15 +1,14 @@
-
 import os, json
 from flask import Flask, render_template, request, jsonify, redirect, url_for, g
 from datetime import datetime, date
- 
+
 app = Flask(__name__)
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 IS_PG = 'postgres' in DATABASE_URL
- 
+
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 ANTHROPIC_KEY  = os.environ.get('ANTHROPIC_KEY', '')
- 
+
 # ── DB helpers ───────────────────────────────────────────────────────
 def get_db():
     if 'db' not in g:
@@ -27,16 +26,16 @@ def get_db():
             g.db = conn
             g.db_type = 'sqlite'
     return g.db
- 
+
 @app.teardown_appcontext
 def close_db(e=None):
     db = g.pop('db', None)
     if db:
         try: db.close()
         except: pass
- 
+
 def _ph(): return '%s' if IS_PG else '?'
- 
+
 def fetchall(sql, params=()):
     get_db()
     if g.db_type == 'pg':
@@ -46,11 +45,11 @@ def fetchall(sql, params=()):
         cur.execute(s, params)
         return [dict(r) for r in cur.fetchall()]
     return [dict(r) for r in g.db.execute(sql, params).fetchall()]
- 
+
 def fetchone(sql, params=()):
     rows = fetchall(sql, params)
     return rows[0] if rows else None
- 
+
 def execute(sql, params=()):
     get_db()
     if g.db_type == 'pg':
@@ -59,27 +58,27 @@ def execute(sql, params=()):
         cur.execute(s, params)
         return cur
     return g.db.execute(sql, params)
- 
+
 def commit(): get_db().commit()
- 
+
 def last_insert_id():
     get_db()
     if g.db_type == 'pg':
         row = fetchone("SELECT lastval() as id")
         return row['id'] if row else None
     return fetchone("SELECT last_insert_rowid() as id")['id']
- 
+
 def fmt(n):
     try: return f'{float(n):,.0f}'
     except: return '0'
- 
+
 def next_code():
     row = fetchone("SELECT code FROM projects WHERE code LIKE 'P-%' ORDER BY id DESC LIMIT 1")
     if not row: return 'P-001'
     try: n = int(row['code'].split('-')[1]) + 1
     except: n = 1
     return f'P-{n:03d}'
- 
+
 def project_stats(pid):
     ph = _ph()
     rows = fetchall(f"SELECT * FROM invoice_periods WHERE project_id={ph} ORDER BY contract_type,period_no", (pid,))
@@ -90,14 +89,14 @@ def project_stats(pid):
     return dict(periods=rows,design_received=dr,eng_received=er,
                 design_pending=dp,eng_pending=ep,
                 total_received=dr+er,total_pending=dp+ep)
- 
+
 def _map_status(s):
     return {'進行中':'active','已完工':'completed','暫停':'paused'}.get(s,'active')
- 
+
 def _map_payment(s):
     if not s: return ''
     return {'轉帳':'transfer','現金':'cash','開票':'check'}.get(s, s.lower())
- 
+
 # ── init DB ──────────────────────────────────────────────────────────
 def init_db():
     if IS_PG:
@@ -325,7 +324,7 @@ def init_db():
         INSERT OR IGNORE INTO company_info (id) VALUES (1);
         """)
         conn.commit(); conn.close()
- 
+
 # ── Routes ───────────────────────────────────────────────────────────
 @app.route('/')
 def dashboard():
@@ -338,13 +337,13 @@ def dashboard():
     return render_template('dashboard.html', projects=projects, stats=stats, fmt=fmt,
         total_design_contract=td, total_eng_contract=te,
         total_received=tr, total_pending=tp)
- 
+
 @app.route('/projects')
 def project_list():
     projects = fetchall("SELECT * FROM projects ORDER BY created_at DESC")
     stats = {p['id']: project_stats(p['id']) for p in projects}
     return render_template('project_list.html', projects=projects, stats=stats, fmt=fmt)
- 
+
 @app.route('/project/new', methods=['GET','POST'])
 def project_new():
     if request.method == 'POST':
@@ -366,7 +365,7 @@ def project_new():
         commit()
         return redirect(url_for('project_detail', pid=pid))
     return render_template('project_form.html', project=None, code=next_code())
- 
+
 @app.route('/project/<int:pid>')
 def project_detail(pid):
     ph = _ph()
@@ -374,7 +373,7 @@ def project_detail(pid):
     if not project: return redirect(url_for('dashboard'))
     return render_template('project_detail.html', project=project,
                            stats=project_stats(pid), fmt=fmt)
- 
+
 @app.route('/project/<int:pid>/edit', methods=['GET','POST'])
 def project_edit(pid):
     ph = _ph()
@@ -396,13 +395,13 @@ def project_edit(pid):
     existing = fetchall(f"SELECT * FROM invoice_periods WHERE project_id={ph} AND status='pending' ORDER BY contract_type,period_no",(pid,))
     return render_template('project_form.html', project=project,
                            code=project['code'], existing_periods=existing)
- 
+
 @app.route('/project/<int:pid>/delete', methods=['POST'])
 def project_delete(pid):
     execute(f"DELETE FROM projects WHERE id={_ph()}", (pid,))
     commit()
     return redirect(url_for('dashboard'))
- 
+
 def _save_periods(pid, d):
     labels = d.getlist('period_label')
     pcts   = d.getlist('period_pct')
@@ -421,7 +420,7 @@ def _save_periods(pid, d):
         counts[ct] = counts.get(ct,0)+1
         execute(f"INSERT INTO invoice_periods (project_id,period_no,contract_type,label,ratio,amount,due_date,status) VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},'pending')",
                 (pid,counts[ct],ct,label,pv,amt,due))
- 
+
 @app.route('/api/project/<int:pid>/periods', methods=['POST'])
 def api_period_add(pid):
     d = request.json; ph = _ph()
@@ -434,7 +433,7 @@ def api_period_add(pid):
              1 if d.get('has_invoice') else 0,d.get('invoice_no',''),d.get('note','')))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/api/period/<int:iid>', methods=['PATCH'])
 def api_period_update(iid):
     d = request.json; ph = _ph()
@@ -446,7 +445,7 @@ def api_period_update(iid):
     execute(f"UPDATE invoice_periods SET {','.join(fields)} WHERE id={ph}", vals)
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/api/period/<int:iid>', methods=['DELETE'])
 def api_period_delete(iid):
     ph = _ph()
@@ -458,7 +457,7 @@ def api_period_delete(iid):
             execute(f"UPDATE invoice_periods SET period_no={ph} WHERE id={ph}",(i+1,r['id']))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/invoice/<int:iid>/print')
 def invoice_print(iid):
     ph = _ph()
@@ -482,7 +481,7 @@ def invoice_print(iid):
         all_periods=all_periods,total_periods=len(all_periods),
         received_sum=received_sum,contract_amount=contract_amount,
         logo_b64=logo_b64,fmt=fmt)
- 
+
 @app.route('/tasks')
 def tasks():
     ph = _ph()
@@ -499,7 +498,7 @@ def tasks():
         open_tasks=[t for t in all_tasks if t['status']=='open'],
         closed_tasks=[t for t in all_tasks if t['status']=='closed'],
         projects=projects,task_type=tt,selected_project=pid,fmt=fmt)
- 
+
 @app.route('/api/task', methods=['POST'])
 def api_task_add():
     d = request.json; ph = _ph()
@@ -509,7 +508,7 @@ def api_task_add():
              d.get('due_date',''),d.get('note',''),d.get('source','web')))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/api/task/<int:tid>', methods=['PATCH'])
 def api_task_update(tid):
     d = request.json; ph = _ph()
@@ -521,13 +520,13 @@ def api_task_update(tid):
     execute(f"UPDATE tasks SET {','.join(fields)} WHERE id={ph}",vals)
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/api/task/<int:tid>', methods=['DELETE'])
 def api_task_delete(tid):
     execute(f"DELETE FROM tasks WHERE id={_ph()}",(tid,))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/finance/vendors')
 def finance_vendors():
     vendors  = fetchall("SELECT * FROM vendors ORDER BY name")
@@ -537,7 +536,7 @@ def finance_vendors():
     paid    = fetchall(f"SELECT vi.*,p.name as project_name FROM vendor_invoices vi LEFT JOIN projects p ON vi.project_id=p.id WHERE vi.status='paid' ORDER BY vi.paid_date DESC LIMIT 50")
     return render_template('finance_vendors.html',vendors=vendors,projects=projects,
         pending=pending,paid=paid,fmt=fmt,now=date.today().isoformat())
- 
+
 @app.route('/api/vendor', methods=['POST'])
 def api_vendor_add():
     d = request.json; ph = _ph()
@@ -546,7 +545,7 @@ def api_vendor_add():
              d.get('bank_name',''),d.get('bank_account',''),d.get('bank_holder',''),d.get('note','')))
     commit()
     return jsonify({'ok':True,'id':last_insert_id()})
- 
+
 @app.route('/api/vendor/<int:vid>', methods=['PATCH'])
 def api_vendor_update(vid):
     d = request.json; ph = _ph()
@@ -558,18 +557,18 @@ def api_vendor_update(vid):
     execute(f"UPDATE vendors SET {','.join(fields)} WHERE id={ph}",vals)
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/api/vendor/<int:vid>', methods=['DELETE'])
 def api_vendor_delete(vid):
     execute(f"DELETE FROM vendors WHERE id={_ph()}",(vid,))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/api/vendor/<int:vid>', methods=['GET'])
 def api_vendor_get(vid):
     v = fetchone(f"SELECT * FROM vendors WHERE id={_ph()}",(vid,))
     return jsonify(v if v else {})
- 
+
 @app.route('/api/vendor-invoice', methods=['POST'])
 def api_vendor_invoice_add():
     d = request.json; ph = _ph()
@@ -580,7 +579,7 @@ def api_vendor_invoice_add():
              d.get('invoice_no',''),d.get('note','')))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/api/vendor-invoice/<int:iid>/pay', methods=['POST'])
 def api_vendor_invoice_pay(iid):
     d = request.json; ph = _ph()
@@ -588,18 +587,18 @@ def api_vendor_invoice_pay(iid):
             (d.get('paid_date',''),d.get('payment_method',''),d.get('paid_account',''),iid))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/api/vendor-invoice/<int:iid>', methods=['DELETE'])
 def api_vendor_invoice_delete(iid):
     execute(f"DELETE FROM vendor_invoices WHERE id={_ph()}",(iid,))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/finance/expenses')
 def finance_expenses():
     expenses = fetchall("SELECT * FROM company_expenses ORDER BY date DESC")
     return render_template('finance_expenses.html',expenses=expenses,fmt=fmt)
- 
+
 @app.route('/api/expense', methods=['POST'])
 def api_expense_add():
     d = request.json; ph = _ph()
@@ -609,13 +608,13 @@ def api_expense_add():
              d.get('invoice_status','無發票'),d.get('invoice_no',''),d.get('recurring','否'),d.get('note','')))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/api/expense/<int:eid>', methods=['DELETE'])
 def api_expense_delete(eid):
     execute(f"DELETE FROM company_expenses WHERE id={_ph()}",(eid,))
     commit()
     return jsonify({'ok':True})
- 
+
 @app.route('/finance/report')
 def finance_report():
     di  = (fetchone("SELECT COALESCE(SUM(amount),0) as v FROM invoice_periods WHERE status='received' AND contract_type='design'") or {}).get('v',0)
@@ -636,7 +635,7 @@ def finance_report():
         vendor_expense=ve or 0,company_expense=ce or 0,
         total_income=ti,total_expense=te,profit=ti-te,
         project_stats=psl,fmt=fmt)
- 
+
 @app.route('/api/backup')
 def api_backup():
     from flask import Response
@@ -651,14 +650,14 @@ def api_backup():
     return Response(json.dumps(data,ensure_ascii=False,indent=2,default=str),
         mimetype='application/json',
         headers={'Content-Disposition':f'attachment; filename="{fn}"'})
- 
+
 @app.route('/api/restore', methods=['POST'])
 def api_restore():
     data = request.json
     if data.get('backup_version') == '2.0':
         return _restore_v2(data)
     return api_import_finance()
- 
+
 def _restore_v2(data):
     ph = _ph()
     counts = {}
@@ -694,7 +693,7 @@ def _restore_v2(data):
         counts['company_expenses'] = counts.get('company_expenses',0)+1
     commit()
     return jsonify({'ok':True,'restored':counts})
- 
+
 @app.route('/api/import', methods=['POST'])
 def api_import_finance():
     data = request.json; ph = _ph()
@@ -719,7 +718,7 @@ def api_import_finance():
         imported['periods']+=1
     commit()
     return jsonify({'ok':True,'imported':imported})
- 
+
 @app.route('/webhook/telegram', methods=['POST'])
 def telegram_webhook():
     import requests as req
@@ -730,11 +729,11 @@ def telegram_webhook():
     text = msg.get('text','')
     photo = msg.get('photo')
     if not chat_id: return 'ok'
- 
+
     def reply(txt):
         req.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
                  json={'chat_id':chat_id,'text':txt,'parse_mode':'HTML'})
- 
+
     if photo and ANTHROPIC_KEY:
         file_id = photo[-1]['file_id']
         fi = req.get(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}').json()
@@ -753,7 +752,7 @@ def telegram_webhook():
         except:
             reply("照片收到，請手動輸入：\n/pay 金額 廠商\n/todo 待辦\n/defect 缺失")
         return 'ok'
- 
+
     ph = _ph()
     if text.startswith('/pay'):
         parts = text.split(' ',3)
@@ -784,14 +783,14 @@ def telegram_webhook():
     else:
         reply("/pay 金額 廠商\n/todo 待辦\n/defect 缺失\n直接傳照片辨識發票")
     return 'ok'
- 
+
 @app.route('/api/set-webhook', methods=['POST'])
 def set_webhook():
     import requests as req
     base = request.json.get('url') or request.host_url.rstrip('/')
     r = req.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook',json={'url':f'{base}/webhook/telegram'})
     return jsonify(r.json())
- 
+
 @app.route('/settings', methods=['GET','POST'])
 def settings():
     ph = _ph()
@@ -816,7 +815,7 @@ def settings():
             with open(lp,'rb') as f: logo_b64 = base64.b64encode(f.read()).decode()
     webhook_url = request.host_url.rstrip('/')+'/webhook/telegram'
     return render_template('settings.html',company=company,logo_b64=logo_b64,webhook_url=webhook_url)
- 
+
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0',port=int(os.environ.get('PORT',5006)),debug=False)
