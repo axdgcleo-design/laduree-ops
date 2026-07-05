@@ -90,6 +90,43 @@ def project_stats(pid):
                 design_pending=dp,eng_pending=ep,
                 total_received=dr+er,total_pending=dp+ep)
 
+def project_task_counts(pid):
+    """單案場的待辦/缺失統計"""
+    ph = _ph()
+    todo_open   = (fetchone(f"SELECT COUNT(*) as c FROM tasks WHERE project_id={ph} AND type='todo' AND status='open'", (pid,)) or {}).get('c', 0)
+    todo_closed = (fetchone(f"SELECT COUNT(*) as c FROM tasks WHERE project_id={ph} AND type='todo' AND status='closed'", (pid,)) or {}).get('c', 0)
+    defect_open   = (fetchone(f"SELECT COUNT(*) as c FROM tasks WHERE project_id={ph} AND type='defect' AND status='open'", (pid,)) or {}).get('c', 0)
+    defect_closed = (fetchone(f"SELECT COUNT(*) as c FROM tasks WHERE project_id={ph} AND type='defect' AND status='closed'", (pid,)) or {}).get('c', 0)
+    return {
+        'todo_open': todo_open,
+        'todo_closed': todo_closed,
+        'todo_total': todo_open + todo_closed,
+        'defect_open': defect_open,
+        'defect_closed': defect_closed,
+        'defect_total': defect_open + defect_closed,
+    }
+
+def all_project_task_counts():
+    """所有案場的任務統計，回傳 {project_id: counts_dict}"""
+    rows = fetchall("""
+        SELECT project_id, type, status, COUNT(*) as c
+        FROM tasks
+        WHERE project_id IS NOT NULL
+        GROUP BY project_id, type, status
+    """)
+    result = {}
+    for r in rows:
+        pid = r['project_id']
+        if pid not in result:
+            result[pid] = {'todo_open':0,'todo_closed':0,'defect_open':0,'defect_closed':0}
+        key = f"{r['type']}_{r['status']}"
+        if key in result[pid]:
+            result[pid][key] = r['c']
+    for pid, d in result.items():
+        d['todo_total'] = d['todo_open'] + d['todo_closed']
+        d['defect_total'] = d['defect_open'] + d['defect_closed']
+    return result
+
 def _map_status(s):
     return {'進行中':'active','已完工':'completed','暫停':'paused'}.get(s,'active')
 
@@ -337,11 +374,13 @@ except Exception as e:
 def dashboard():
     projects = fetchall("SELECT * FROM projects ORDER BY created_at DESC")
     stats = {p['id']: project_stats(p['id']) for p in projects}
+    task_counts = all_project_task_counts()
     td = sum(p['design_contract'] for p in projects)
     te = sum(p['engineering_contract'] for p in projects)
     tr = sum(stats[p['id']]['total_received'] for p in projects)
     tp = sum(stats[p['id']]['total_pending'] for p in projects)
-    return render_template('dashboard.html', projects=projects, stats=stats, fmt=fmt,
+    return render_template('dashboard.html', projects=projects, stats=stats,
+        task_counts=task_counts, fmt=fmt,
         total_design_contract=td, total_eng_contract=te,
         total_received=tr, total_pending=tp)
 
@@ -349,7 +388,9 @@ def dashboard():
 def project_list():
     projects = fetchall("SELECT * FROM projects ORDER BY created_at DESC")
     stats = {p['id']: project_stats(p['id']) for p in projects}
-    return render_template('project_list.html', projects=projects, stats=stats, fmt=fmt)
+    task_counts = all_project_task_counts()
+    return render_template('project_list.html', projects=projects,
+                           stats=stats, task_counts=task_counts, fmt=fmt)
 
 @app.route('/project/new', methods=['GET','POST'])
 def project_new():
@@ -378,8 +419,16 @@ def project_detail(pid):
     ph = _ph()
     project = fetchone(f"SELECT * FROM projects WHERE id={ph}", (pid,))
     if not project: return redirect(url_for('dashboard'))
+    project_tasks = fetchall(
+        f"SELECT * FROM tasks WHERE project_id={ph} ORDER BY status, due_date, created_at DESC",
+        (pid,)
+    )
+    todos   = [t for t in project_tasks if t['type'] == 'todo']
+    defects = [t for t in project_tasks if t['type'] == 'defect']
     return render_template('project_detail.html', project=project,
-                           stats=project_stats(pid), fmt=fmt)
+                           stats=project_stats(pid), fmt=fmt,
+                           todos=todos, defects=defects,
+                           tcounts=project_task_counts(pid))
 
 @app.route('/project/<int:pid>/edit', methods=['GET','POST'])
 def project_edit(pid):

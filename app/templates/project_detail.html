@@ -1,6 +1,65 @@
 {% extends 'base.html' %}
 {% block title %}{{ project.name }} — Laduree OPS{% endblock %}
 {% block body %}
+{% macro _render_periods(periods, ct) %}
+{% if periods %}
+<div style="overflow-x:auto">
+<table class="periods-table">
+  <thead>
+    <tr>
+      <th>期次</th><th>說明</th><th style="text-align:right">金額</th>
+      <th>應收日</th><th>收款方式</th><th>發票</th>
+      <th>實收日</th><th>狀態</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in periods %}
+    <tr>
+      <td><span class="period-no">第 {{ p.period_no }} 期</span></td>
+      <td>{{ p.label }}</td>
+      <td class="amount-cell">{{ fmt(p.amount) }}</td>
+      <td class="mono" style="color:var(--mid)">{{ p.due_date or '—' }}</td>
+      <td>
+        {% if p.payment_method == 'transfer' %}<span class="pay-tag pay-transfer">匯款{% if p.account_last5 %} *{{ p.account_last5 }}{% endif %}</span>
+        {% elif p.payment_method == 'cash' %}<span class="pay-tag pay-cash">現金</span>
+        {% elif p.payment_method == 'check' %}<span class="pay-tag pay-check">開票</span>
+        {% else %}—{% endif %}
+      </td>
+      <td>
+        {% if p.has_invoice %}
+          <div style="font-size:.75rem">已開</div>
+          {% if p.invoice_no %}<div class="mono" style="font-size:.68rem;color:var(--mid)">{{ p.invoice_no }}</div>{% endif %}
+        {% else %}<span style="font-size:.75rem;color:var(--muted)">未開</span>{% endif %}
+      </td>
+      <td class="mono" style="color:var(--mid)">{{ p.received_date or '—' }}</td>
+      <td><span class="status status-{{ p.status }}">{{ {'pending':'待請款','invoiced':'已開單','received':'已收款'}[p.status] }}</span></td>
+      <td>
+        <div class="actions-row">
+          {% if p.status in ('invoiced','received') %}
+          <a href="{{ url_for('invoice_print', iid=p.id) }}" target="_blank" class="btn btn-ghost btn-sm">列印</a>
+          {% endif %}
+          <button class="btn btn-ghost btn-sm" onclick="openEditModal({{ p.id }}, {{ p|tojson }})">編輯</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deletePeriod({{ p.id }})">刪除</button>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="2" style="font-size:.68rem;color:var(--muted);padding:.5rem .75rem">合計</td>
+      <td class="amount-cell" style="color:var(--red)">{{ fmt(periods|sum(attribute='amount')) }}</td>
+      <td colspan="6"></td>
+    </tr>
+  </tfoot>
+</table>
+</div>
+{% else %}
+<div class="empty" style="padding:2rem 1rem">
+  <div class="empty-title">尚無期數</div>
+</div>
+{% endif %}
+{% endmacro %}
 <div class="page">
   <a href="{{ url_for('project_list') }}" style="font-size:.75rem;color:var(--muted);text-decoration:none">← 所有案場</a>
 
@@ -103,67 +162,12 @@
     </div>
   </div>
   {% endif %}
+
+  <!-- 工地任務 -->
+  <h3 style="font-size:1rem;font-weight:600;margin:2rem 0 .5rem">工地任務</h3>
+  {% include '_project_tasks.html' %}
 </div>
 
-{% macro _render_periods(periods, ct) %}
-{% if periods %}
-<div style="overflow-x:auto">
-<table class="periods-table">
-  <thead>
-    <tr>
-      <th>期次</th><th>說明</th><th style="text-align:right">金額</th>
-      <th>應收日</th><th>收款方式</th><th>發票</th>
-      <th>實收日</th><th>狀態</th><th></th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for p in periods %}
-    <tr>
-      <td><span class="period-no">第 {{ p.period_no }} 期</span></td>
-      <td>{{ p.label }}</td>
-      <td class="amount-cell">{{ fmt(p.amount) }}</td>
-      <td class="mono" style="color:var(--mid)">{{ p.due_date or '—' }}</td>
-      <td>
-        {% if p.payment_method == 'transfer' %}<span class="pay-tag pay-transfer">匯款{% if p.account_last5 %} *{{ p.account_last5 }}{% endif %}</span>
-        {% elif p.payment_method == 'cash' %}<span class="pay-tag pay-cash">現金</span>
-        {% elif p.payment_method == 'check' %}<span class="pay-tag pay-check">開票</span>
-        {% else %}—{% endif %}
-      </td>
-      <td>
-        {% if p.has_invoice %}
-          <div style="font-size:.75rem">已開</div>
-          {% if p.invoice_no %}<div class="mono" style="font-size:.68rem;color:var(--mid)">{{ p.invoice_no }}</div>{% endif %}
-        {% else %}<span style="font-size:.75rem;color:var(--muted)">未開</span>{% endif %}
-      </td>
-      <td class="mono" style="color:var(--mid)">{{ p.received_date or '—' }}</td>
-      <td><span class="status status-{{ p.status }}">{{ {'pending':'待請款','invoiced':'已開單','received':'已收款'}[p.status] }}</span></td>
-      <td>
-        <div class="actions-row">
-          {% if p.status in ('invoiced','received') %}
-          <a href="{{ url_for('invoice_print', iid=p.id) }}" target="_blank" class="btn btn-ghost btn-sm">列印</a>
-          {% endif %}
-          <button class="btn btn-ghost btn-sm" onclick="openEditModal({{ p.id }}, {{ p|tojson }})">編輯</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deletePeriod({{ p.id }})">刪除</button>
-        </div>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-  <tfoot>
-    <tr>
-      <td colspan="2" style="font-size:.68rem;color:var(--muted);padding:.5rem .75rem">合計</td>
-      <td class="amount-cell" style="color:var(--red)">{{ fmt(periods|sum(attribute='amount')) }}</td>
-      <td colspan="6"></td>
-    </tr>
-  </tfoot>
-</table>
-</div>
-{% else %}
-<div class="empty" style="padding:2rem 1rem">
-  <div class="empty-title">尚無期數</div>
-</div>
-{% endif %}
-{% endmacro %}
 
 <!-- Add Modal -->
 <div class="modal-overlay" id="add-modal">

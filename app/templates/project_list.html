@@ -26,6 +26,8 @@
       <div class="stat-box"><div class="stat-label">待請款</div><div class="stat-value red">{{ fmt(tp.v) }}</div></div>
     </div>
 
+    {% include '_project_summary_table.html' %}
+
     {% for p in projects %}
       {% set st = stats[p.id] %}
       {% set total_contract = p.design_contract + p.engineering_contract %}

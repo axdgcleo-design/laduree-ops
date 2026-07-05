@@ -1,0 +1,113 @@
+{#
+  _project_summary_table.html
+  放在 templates/ 裡，在 dashboard.html 或 project_list.html 中用：
+  {% include '_project_summary_table.html' %}
+
+  需要的變數：projects, stats, task_counts, fmt
+  - stats[pid]  → project_stats() 回傳的 dict（含 periods, design_received 等）
+  - task_counts[pid] → all_project_task_counts() 回傳的 dict
+#}
+
+<style>
+.summary-table { margin: 1.5rem 0; }
+.summary-table h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
+.summary-count { color: #999; font-weight: 400; font-size: 0.9rem; margin-left: 0.3rem; }
+
+.project-card {
+    border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 1rem 1.2rem; margin-bottom: 0.75rem;
+    background: #fff; transition: box-shadow 0.15s;
+}
+.project-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.project-card-header {
+    display: flex; justify-content: space-between;
+    align-items: center; margin-bottom: 0.5rem;
+}
+.project-card-name {
+    font-size: 1rem; font-weight: 600; color: #1a1a1a;
+    text-decoration: none;
+}
+.project-card-name:hover { text-decoration: underline; }
+.project-card-status {
+    font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 500;
+}
+.status-active  { background: #dcfce7; color: #166534; }
+.status-paused  { background: #fef9c3; color: #854d0e; }
+.status-completed { background: #f3f4f6; color: #6b7280; }
+
+/* 款項 badges */
+.period-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 0.5rem; }
+.period-badge {
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 4px;
+    white-space: nowrap; font-weight: 500;
+}
+.period-badge.received { background: #dcfce7; color: #166534; }
+.period-badge.pending  { background: #fef3c7; color: #92400e; }
+
+/* 底部統計列 */
+.project-card-stats {
+    display: flex; gap: 1rem; font-size: 0.8rem; color: #666;
+    padding-top: 0.5rem; border-top: 1px solid #f0f0f0;
+}
+.stat-item { display: flex; align-items: center; gap: 3px; }
+.stat-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+}
+.dot-received { background: #22c55e; }
+.dot-pending  { background: #f59e0b; }
+.dot-todo     { background: #3b82f6; }
+.dot-defect   { background: #ef4444; }
+.stat-value { font-weight: 600; }
+</style>
+
+<div class="summary-table">
+    <h2>案場總表 <span class="summary-count">{{ projects|length }}</span></h2>
+
+    {% for p in projects %}
+    {% set s = stats.get(p.id, {}) %}
+    {% set tc = task_counts.get(p.id, {'todo_open':0,'defect_open':0,'todo_total':0,'defect_total':0}) %}
+    <div class="project-card">
+        <!-- 標題列 -->
+        <div class="project-card-header">
+            <a class="project-card-name" href="/project/{{ p.id }}">
+                {{ p.name }}
+            </a>
+            <span class="project-card-status status-{{ p.status }}">
+                {% if p.status == 'active' %}進行中{% elif p.status == 'paused' %}暫停{% elif p.status == 'completed' %}已完工{% else %}{{ p.status }}{% endif %}
+            </span>
+        </div>
+
+        <!-- 款項 badges -->
+        {% set periods = s.get('periods', []) %}
+        {% if periods %}
+        <div class="period-badges">
+            {% for pd in periods %}
+            <span class="period-badge {{ 'received' if pd.status == 'received' else 'pending' }}">
+                {{ pd.label or ('設計' if pd.contract_type == 'design' else '工程') + '第' + pd.period_no|string + '期' }}・{{ '已收' if pd.status == 'received' else '待收' }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- 統計列 -->
+        <div class="project-card-stats">
+            <div class="stat-item">
+                <span class="stat-dot dot-received"></span>
+                已收 <span class="stat-value">${{ fmt(s.get('total_received', 0)) }}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-dot dot-pending"></span>
+                待收 <span class="stat-value">${{ fmt(s.get('total_pending', 0)) }}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-dot dot-todo"></span>
+                待辦 <span class="stat-value">{{ tc.todo_open }}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-dot dot-defect"></span>
+                缺失 <span class="stat-value">{{ tc.defect_open }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>

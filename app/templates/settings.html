@@ -9,25 +9,6 @@
     </div>
   </div>
 
-  <!-- 備份/還原 -->
-  <div class="card" style="margin-bottom:1rem;border-left:3px solid var(--red)">
-    <div style="font-size:.78rem;font-weight:500;letter-spacing:.05em;margin-bottom:1rem">資料備份與還原</div>
-    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start">
-      <div>
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.5rem">定期備份，避免資料遺失</div>
-        <a href="/api/backup" class="btn btn-primary btn-sm" download>⬇ 匯出備份 JSON</a>
-      </div>
-      <div>
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.5rem">還原備份或匯入舊財務系統資料</div>
-        <div style="display:flex;gap:.5rem;align-items:center">
-          <input type="file" id="restore-file" accept=".json" style="font-size:.78rem">
-          <button class="btn btn-outline btn-sm" onclick="doRestore()">匯入</button>
-        </div>
-        <div id="restore-result" style="margin-top:.5rem;font-size:.72rem"></div>
-      </div>
-    </div>
-  </div>
-
   <div class="card">
     <form method="POST" enctype="multipart/form-data">
 
@@ -102,30 +83,4 @@
     </form>
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-async function doRestore() {
-  const file = document.getElementById('restore-file').files[0];
-  if (!file) { alert('請選擇備份 JSON 檔案'); return; }
-  const text = await file.text();
-  let data;
-  try { data = JSON.parse(text); } catch(e) { alert('JSON 格式錯誤'); return; }
-  const res = document.getElementById('restore-result');
-  res.textContent = '匯入中...';
-  const r = await fetch('/api/restore', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
-  });
-  const result = await r.json();
-  if (result.ok) {
-    const c = result.restored || result.imported || {};
-    const parts = Object.entries(c).map(([k,v]) => `${k}: ${v} 筆`).join('、');
-    res.innerHTML = `<span style="color:var(--green)">✓ 匯入成功${parts ? '：' + parts : ''}</span>`;
-    setTimeout(() => location.reload(), 1500);
-  } else {
-    res.innerHTML = `<span style="color:var(--red)">匯入失敗</span>`;
-  }
-}
-</script>
 {% endblock %}

@@ -1,0 +1,248 @@
+{# 
+  _project_tasks.html
+  放在 templates/ 裡，在 project_detail.html 中用：
+  {% include '_project_tasks.html' %}
+  
+  需要的變數：project, todos, defects, tcounts
+#}
+
+<style>
+.task-section { margin: 2rem 0; }
+.task-tabs { display: flex; gap: 0; border-bottom: 2px solid #e5e5e5; margin-bottom: 1rem; }
+.task-tab {
+    padding: 0.6rem 1.2rem; cursor: pointer;
+    font-size: 0.95rem; font-weight: 500;
+    border-bottom: 2px solid transparent; margin-bottom: -2px;
+    color: #888; background: none; border-top: none; border-left: none; border-right: none;
+}
+.task-tab.active { color: #1a1a1a; border-bottom-color: #1a1a1a; }
+.task-tab .badge {
+    display: inline-block; min-width: 20px; padding: 1px 6px;
+    font-size: 0.75rem; border-radius: 10px; margin-left: 4px;
+    text-align: center; font-weight: 600;
+}
+.task-tab .badge.open-count { background: #fef3c7; color: #92400e; }
+.task-tab .badge.defect-count { background: #fee2e2; color: #991b1b; }
+.task-panel { display: none; }
+.task-panel.active { display: block; }
+
+/* 快速新增列 */
+.task-add-row {
+    display: flex; gap: 0.5rem; margin-bottom: 1rem;
+    align-items: center; flex-wrap: wrap;
+}
+.task-add-row input[type="text"] {
+    flex: 1; min-width: 180px; padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem;
+}
+.task-add-row select {
+    padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem;
+}
+.task-add-row button {
+    padding: 0.5rem 1rem; border: 1px solid #1a1a1a; border-radius: 6px;
+    background: #1a1a1a; color: #fff; font-size: 0.85rem; cursor: pointer;
+}
+.task-add-row button:hover { background: #333; }
+
+/* 任務列表 */
+.task-list { list-style: none; padding: 0; margin: 0; }
+.task-item {
+    display: flex; align-items: flex-start; gap: 0.6rem;
+    padding: 0.6rem 0; border-bottom: 1px solid #f0f0f0;
+}
+.task-item:last-child { border-bottom: none; }
+.task-item input[type="checkbox"] {
+    margin-top: 3px; width: 18px; height: 18px; cursor: pointer;
+    accent-color: #1a1a1a;
+}
+.task-item-body { flex: 1; }
+.task-item-title { font-size: 0.9rem; color: #1a1a1a; }
+.task-item-title.done { text-decoration: line-through; color: #aaa; }
+.task-item-meta { font-size: 0.75rem; color: #999; margin-top: 2px; }
+.task-item-meta span { margin-right: 0.6rem; }
+.priority-high { color: #dc2626 !important; font-weight: 600; }
+.priority-urgent { color: #dc2626 !important; font-weight: 700; }
+.task-delete {
+    background: none; border: none; color: #ccc; cursor: pointer;
+    font-size: 1.1rem; padding: 0 4px; line-height: 1;
+}
+.task-delete:hover { color: #ef4444; }
+.task-empty { color: #bbb; font-size: 0.9rem; padding: 1rem 0; }
+
+/* 完成區折疊 */
+.task-closed-toggle {
+    background: none; border: none; color: #999; cursor: pointer;
+    font-size: 0.8rem; padding: 0.5rem 0; text-decoration: underline;
+}
+</style>
+
+<div class="task-section">
+    <div class="task-tabs">
+        <button class="task-tab active" onclick="switchTaskTab('todo', this)">
+            待辦 <span class="badge open-count">{{ tcounts.todo_open }}</span>
+        </button>
+        <button class="task-tab" onclick="switchTaskTab('defect', this)">
+            缺失 <span class="badge defect-count">{{ tcounts.defect_open }}</span>
+        </button>
+    </div>
+
+    <!-- ═══ 待辦 Panel ═══ -->
+    <div id="panel-todo" class="task-panel active">
+        <div class="task-add-row">
+            <input type="text" id="todo-title" placeholder="新增待辦…" 
+                   onkeydown="if(event.key==='Enter')addTask('todo')">
+            <select id="todo-priority">
+                <option value="normal">一般</option>
+                <option value="high">重要</option>
+                <option value="urgent">緊急</option>
+            </select>
+            <button onclick="addTask('todo')">＋ 新增</button>
+        </div>
+        <ul class="task-list" id="todo-list">
+            {% for t in todos if t.status == 'open' %}
+            <li class="task-item" data-id="{{ t.id }}">
+                <input type="checkbox" onchange="toggleTask({{ t.id }}, this)">
+                <div class="task-item-body">
+                    <div class="task-item-title">{{ t.title }}</div>
+                    <div class="task-item-meta">
+                        {% if t.priority == 'high' %}<span class="priority-high">⚠ 重要</span>{% endif %}
+                        {% if t.priority == 'urgent' %}<span class="priority-urgent">🔴 緊急</span>{% endif %}
+                        {% if t.due_date %}<span>📅 {{ t.due_date }}</span>{% endif %}
+                        {% if t.source != 'web' %}<span>via {{ t.source }}</span>{% endif %}
+                    </div>
+                </div>
+                <button class="task-delete" onclick="deleteTask({{ t.id }}, this)" title="刪除">×</button>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if todos|selectattr('status','equalto','open')|list|length == 0 %}
+        <p class="task-empty" id="todo-empty">目前沒有待辦 👌</p>
+        {% endif %}
+
+        {% set closed_todos = todos|selectattr('status','equalto','closed')|list %}
+        {% if closed_todos %}
+        <button class="task-closed-toggle" onclick="toggleClosedList('todo-closed')">
+            已完成 ({{ closed_todos|length }})
+        </button>
+        <ul class="task-list" id="todo-closed" style="display:none">
+            {% for t in closed_todos %}
+            <li class="task-item" data-id="{{ t.id }}">
+                <input type="checkbox" checked onchange="toggleTask({{ t.id }}, this)">
+                <div class="task-item-body">
+                    <div class="task-item-title done">{{ t.title }}</div>
+                </div>
+                <button class="task-delete" onclick="deleteTask({{ t.id }}, this)" title="刪除">×</button>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+
+    <!-- ═══ 缺失 Panel ═══ -->
+    <div id="panel-defect" class="task-panel">
+        <div class="task-add-row">
+            <input type="text" id="defect-title" placeholder="新增缺失…"
+                   onkeydown="if(event.key==='Enter')addTask('defect')">
+            <select id="defect-priority">
+                <option value="normal">一般</option>
+                <option value="high">重要</option>
+                <option value="urgent">緊急</option>
+            </select>
+            <button onclick="addTask('defect')">＋ 新增</button>
+        </div>
+        <ul class="task-list" id="defect-list">
+            {% for t in defects if t.status == 'open' %}
+            <li class="task-item" data-id="{{ t.id }}">
+                <input type="checkbox" onchange="toggleTask({{ t.id }}, this)">
+                <div class="task-item-body">
+                    <div class="task-item-title">{{ t.title }}</div>
+                    <div class="task-item-meta">
+                        {% if t.priority == 'high' %}<span class="priority-high">⚠ 重要</span>{% endif %}
+                        {% if t.priority == 'urgent' %}<span class="priority-urgent">🔴 緊急</span>{% endif %}
+                        {% if t.due_date %}<span>📅 {{ t.due_date }}</span>{% endif %}
+                    </div>
+                </div>
+                <button class="task-delete" onclick="deleteTask({{ t.id }}, this)" title="刪除">×</button>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if defects|selectattr('status','equalto','open')|list|length == 0 %}
+        <p class="task-empty" id="defect-empty">目前沒有缺失 ✅</p>
+        {% endif %}
+
+        {% set closed_defects = defects|selectattr('status','equalto','closed')|list %}
+        {% if closed_defects %}
+        <button class="task-closed-toggle" onclick="toggleClosedList('defect-closed')">
+            已結案 ({{ closed_defects|length }})
+        </button>
+        <ul class="task-list" id="defect-closed" style="display:none">
+            {% for t in closed_defects %}
+            <li class="task-item" data-id="{{ t.id }}">
+                <input type="checkbox" checked onchange="toggleTask({{ t.id }}, this)">
+                <div class="task-item-body">
+                    <div class="task-item-title done">{{ t.title }}</div>
+                </div>
+                <button class="task-delete" onclick="deleteTask({{ t.id }}, this)" title="刪除">×</button>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+const PROJECT_ID = {{ project.id }};
+
+function switchTaskTab(type, btn) {
+    document.querySelectorAll('.task-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.task-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + type).classList.add('active');
+}
+
+function addTask(type) {
+    const titleEl = document.getElementById(type + '-title');
+    const prioEl  = document.getElementById(type + '-priority');
+    const title = titleEl.value.trim();
+    if (!title) { titleEl.focus(); return; }
+
+    fetch('/api/task', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            project_id: PROJECT_ID,
+            type: type,
+            title: title,
+            priority: prioEl.value,
+            source: 'web'
+        })
+    }).then(r => r.json()).then(d => {
+        if (d.ok) location.reload();
+    });
+}
+
+function toggleTask(tid, cb) {
+    const newStatus = cb.checked ? 'closed' : 'open';
+    fetch('/api/task/' + tid, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ status: newStatus })
+    }).then(r => r.json()).then(d => {
+        if (d.ok) location.reload();
+    });
+}
+
+function deleteTask(tid, btn) {
+    if (!confirm('確定刪除？')) return;
+    fetch('/api/task/' + tid, {
+        method: 'DELETE'
+    }).then(r => r.json()).then(d => {
+        if (d.ok) btn.closest('.task-item').remove();
+    });
+}
+
+function toggleClosedList(id) {
+    const el = document.getElementById(id);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
