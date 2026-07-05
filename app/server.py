@@ -6,6 +6,126 @@ app = Flask(__name__)
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 IS_PG = 'postgres' in DATABASE_URL
 
+# 啟動時自動建表（gunicorn 不走 __main__）
+def _auto_init():
+    try:
+        if IS_PG:
+            import psycopg2
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id SERIAL PRIMARY KEY, legacy_id TEXT UNIQUE, code TEXT UNIQUE,
+                name TEXT NOT NULL, client_name TEXT DEFAULT '', client_tel TEXT DEFAULT '',
+                client_email TEXT DEFAULT '', address TEXT DEFAULT '', start_date TEXT DEFAULT '',
+                status TEXT DEFAULT 'active', design_contract FLOAT DEFAULT 0,
+                design_tax TEXT DEFAULT '未稅', engineering_contract FLOAT DEFAULT 0,
+                engineering_tax TEXT DEFAULT '未稅', note TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS invoice_periods (
+                id SERIAL PRIMARY KEY, legacy_id TEXT UNIQUE,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                period_no INTEGER NOT NULL DEFAULT 1, contract_type TEXT DEFAULT 'design',
+                label TEXT DEFAULT '', ratio FLOAT DEFAULT 0, amount FLOAT DEFAULT 0,
+                tax_setting TEXT DEFAULT '未稅', due_date TEXT DEFAULT '',
+                payment_method TEXT DEFAULT '', account_last5 TEXT DEFAULT '',
+                has_invoice INTEGER DEFAULT 0, invoice_no TEXT DEFAULT '',
+                invoice_date TEXT DEFAULT '', received_date TEXT DEFAULT '',
+                status TEXT DEFAULT 'pending', note TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS vendors (
+                id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+                contact TEXT DEFAULT '', tel TEXT DEFAULT '', category TEXT DEFAULT '',
+                bank_name TEXT DEFAULT '', bank_account TEXT DEFAULT '',
+                bank_holder TEXT DEFAULT '', note TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS vendor_contracts (
+                id SERIAL PRIMARY KEY, legacy_id TEXT UNIQUE,
+                vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+                project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                vendor_name TEXT DEFAULT '', category TEXT DEFAULT '',
+                amount FLOAT DEFAULT 0, tax_setting TEXT DEFAULT '未稅',
+                note TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS vendor_invoices (
+                id SERIAL PRIMARY KEY,
+                vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+                project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                vendor_name TEXT DEFAULT '', period_name TEXT DEFAULT '',
+                due_date TEXT DEFAULT '', amount FLOAT DEFAULT 0,
+                tax_setting TEXT DEFAULT '未稅', invoice_status TEXT DEFAULT '無發票',
+                invoice_no TEXT DEFAULT '', note TEXT DEFAULT '',
+                status TEXT DEFAULT 'pending', paid_date TEXT DEFAULT '',
+                payment_method TEXT DEFAULT '', paid_account TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS vendor_payments (
+                id SERIAL PRIMARY KEY, legacy_id TEXT UNIQUE,
+                vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+                project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                vendor_name TEXT DEFAULT '', category TEXT DEFAULT '',
+                period_name TEXT DEFAULT '', date TEXT DEFAULT '',
+                amount FLOAT DEFAULT 0, fee FLOAT DEFAULT 0,
+                tax_setting TEXT DEFAULT '未稅', payment_method TEXT DEFAULT '',
+                account_no TEXT DEFAULT '', invoice_status TEXT DEFAULT '無發票',
+                invoice_no TEXT DEFAULT '', status TEXT DEFAULT '已付',
+                note TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS company_expenses (
+                id SERIAL PRIMARY KEY, legacy_id TEXT UNIQUE,
+                date TEXT DEFAULT '', category TEXT DEFAULT '', item TEXT DEFAULT '',
+                vendor TEXT DEFAULT '', amount FLOAT DEFAULT 0, tax_setting TEXT DEFAULT '含稅',
+                payment_method TEXT DEFAULT '', invoice_status TEXT DEFAULT '無發票',
+                invoice_no TEXT DEFAULT '', recurring TEXT DEFAULT '否',
+                note TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS extra_works (
+                id SERIAL PRIMARY KEY, legacy_id TEXT UNIQUE,
+                project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                type TEXT DEFAULT '追加', description TEXT DEFAULT '',
+                date TEXT DEFAULT '', amount FLOAT DEFAULT 0,
+                invoice_no TEXT DEFAULT '', target TEXT DEFAULT '業主',
+                note TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS pending_payments (
+                id SERIAL PRIMARY KEY, legacy_id TEXT UNIQUE,
+                due_date TEXT DEFAULT '', type TEXT DEFAULT 'vendor',
+                vendor_name TEXT DEFAULT '',
+                project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                amount FLOAT DEFAULT 0, payment_method TEXT DEFAULT '',
+                category TEXT DEFAULT '', status TEXT DEFAULT 'pending',
+                note TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS tasks (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                type TEXT DEFAULT 'todo', title TEXT NOT NULL,
+                description TEXT DEFAULT '', priority TEXT DEFAULT 'normal',
+                status TEXT DEFAULT 'open', due_date TEXT DEFAULT '',
+                image_url TEXT DEFAULT '', source TEXT DEFAULT 'web',
+                note TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS company_info (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                name TEXT DEFAULT '漣一設計有限公司',
+                name_en TEXT DEFAULT 'LA DURÉE', tax_id TEXT DEFAULT '',
+                address TEXT DEFAULT '', tel TEXT DEFAULT '', email TEXT DEFAULT '',
+                bank_name TEXT DEFAULT '', bank_account TEXT DEFAULT '',
+                bank_account_name TEXT DEFAULT ''
+            );
+            INSERT INTO company_info (id) VALUES (1) ON CONFLICT DO NOTHING;
+            """)
+            conn.commit()
+            conn.close()
+    except Exception as e:
+        print(f"init_db error: {e}")
+
+_auto_init()
+
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 ANTHROPIC_KEY  = os.environ.get('ANTHROPIC_KEY', '')
 
