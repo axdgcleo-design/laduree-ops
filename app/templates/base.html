@@ -2,9 +2,17 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>{% block title %}Laduree OPS{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <!-- PWA：可加到手機主畫面、全螢幕開啟 -->
+  <meta name="theme-color" content="#1a1a1a">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="OPS">
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -15,9 +23,17 @@
   <a href="{{ url_for('finance_vendors') }}"  class="nav-link {% if request.endpoint=='finance_vendors' %}active{% endif %}">廠商請款</a>
   <a href="{{ url_for('finance_expenses') }}" class="nav-link {% if request.endpoint=='finance_expenses' %}active{% endif %}">公司支出</a>
   <a href="{{ url_for('finance_report') }}"   class="nav-link {% if request.endpoint=='finance_report' %}active{% endif %}">財務報表</a>
+  <a href="{{ url_for('site_photos') }}"      class="nav-link {% if request.endpoint=='site_photos' %}active{% endif %}">工地照片</a>
   <a href="{{ url_for('settings') }}"         class="nav-link {% if request.endpoint=='settings' %}active{% endif %}">設定</a>
 </nav>
 {% block body %}{% endblock %}
 {% block scripts %}{% endblock %}
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+</script>
 </body>
 </html>
