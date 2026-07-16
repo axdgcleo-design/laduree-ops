@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% block title %}問題處理 — 工地照片{% endblock %}
+{% block head %}
+<style>
+  .iss-photo { width:100%; max-height:44vh; object-fit:contain; background:#000; border-radius:10px; }
+  .iss-dates { display:flex; gap:1.2rem; flex-wrap:wrap; font-size:.8rem; margin:.8rem 0; }
+  .iss-dates .d { color:var(--green); }
+  .iss-dates .d.open { color:var(--red); }
+  .after-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:.55rem; margin-top:.6rem; }
+  .after-cell { position:relative; }
+  .after-cell img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:8px; background:#ece7df; border:1px solid var(--line); }
+  .after-cell .del { position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%;
+    background:var(--red); color:#fff; border:none; font-size:.8rem; cursor:pointer; line-height:22px; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page sp-page">
+  <div style="margin-bottom:.8rem">
+    <a href="{{ url_for('site_pending', sub='fix', project_id=photo.project_id) }}"
+       style="font-size:.8rem;color:var(--mid);text-decoration:none">← 返回待處理</a>
+  </div>
+
+  <div class="page-header" style="border:none;padding:0;margin-bottom:.6rem">
+    <span class="page-title" style="font-size:1.15rem">🔴 問題處理</span>
+  </div>
+
+  <img class="iss-photo" src="{{ url_for('site_photo_img', sid=photo.id) }}">
+
+  <div class="iss-dates">
+    <span class="d open">問題發現：{{ photo._found }}</span>
+    {% if photo.issue_resolved %}<span class="d">問題解決：{{ photo.issue_resolved }}</span>{% endif %}
+  </div>
+
+  <div class="sp-line" style="margin-bottom:.3rem">
+    {% if photo.project_name %}<span class="sp-loc">📍 {{ photo.project_name }}</span>{% endif %}
+    {% if photo.area %}<span>{{ photo.area }}</span>{% endif %}
+    {% if photo.tag %}<span class="sp-tagpill">🔧 {{ photo.tag }}</span>{% endif %}
+  </div>
+  {% if photo.note %}<div style="font-size:.85rem;color:var(--mid);margin-bottom:1rem">{{ photo.note }}</div>{% endif %}
+
+  <!-- 處理後照片 -->
+  <div class="card" style="margin-bottom:1rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+      <strong style="font-size:.9rem">處理後照片（{{ afters|length }} 張）</strong>
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('after-file').click()">＋ 添加</button>
+      <input type="file" id="after-file" accept="image/*" capture="environment" multiple style="display:none" onchange="addAfter(event)">
+    </div>
+    {% if afters %}
+    <div class="after-grid">
+      {% for a in afters %}
+      <div class="after-cell">
+        <img loading="lazy" src="{{ url_for('site_photo_img', sid=a.id) }}">
+        <button class="del" onclick="delAfter({{ a.id }})">×</button>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="font-size:.8rem;color:var(--muted)">還沒有處理後照片。修好後拍幾張，它們會跟這個問題綁在一起。</div>
+    {% endif %}
+  </div>
+
+  <!-- 動作 -->
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+    {% if photo.issue_resolved %}
+      <button class="btn btn-outline" onclick="resolve(false)">↩︎ 取消已解決</button>
+    {% else %}
+      <button class="btn btn-primary" style="background:var(--green);border-color:var(--green)" onclick="resolve(true)">✅ 標記已解決</button>
+    {% endif %}
+    <a class="btn btn-outline" href="{{ url_for('site_photo_report', sid=photo.id) }}">📄 生成報告</a>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SID = {{ photo.id }};
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1500); }
+
+function compress(file){
+  return new Promise(res=>{
+    const img=new Image(), rd=new FileReader();
+    rd.onload=ev=>{ img.onload=()=>{ const max=1280; let w=img.width,h=img.height;
+      if(w>max||h>max){ const r=Math.min(max/w,max/h); w=Math.round(w*r); h=Math.round(h*r); }
+      const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h);
+      res(c.toDataURL('image/jpeg',0.7)); }; img.src=ev.target.result; };
+    rd.readAsDataURL(file);
+  });
+}
+async function addAfter(e){
+  const files=[...e.target.files]; if(!files.length) return;
+  toast('上傳中…');
+  for(const f of files){
+    const url=await compress(f);
+    await fetch('/api/site-photo/'+SID+'/after', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image_data:url,mime:'image/jpeg'})});
+  }
+  location.reload();
+}
+async function delAfter(id){
+  if(!confirm('刪除這張處理後照片？')) return;
+  await fetch('/api/site-photo/'+id, {method:'DELETE'});
+  location.reload();
+}
+async function resolve(v){
+  const r=await fetch('/api/site-photo/'+SID+'/resolve', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({resolved:v})});
+  if((await r.json()).ok) location.reload();
+}
+</script>
+{% endblock %}
