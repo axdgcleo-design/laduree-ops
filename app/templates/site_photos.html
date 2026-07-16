@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}照片集 — 工地照片{% endblock %}
+{% block head %}<script src="{{ url_for('static', filename='js/sitephoto.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="page sp-page">
 
@@ -12,27 +13,28 @@
     </select>
     {% if pending %}<span class="sp-pending-pill">⚠️ 待處理 {{ pending }}</span>{% endif %}
   </div>
+  <div class="sp-storage" style="margin:-.4rem 0 .7rem">📁 {{ storage.count }} 張 · 約 {{ storage.mb }} MB</div>
 
   <form method="get" action="{{ url_for('site_photos') }}">
     {% if selected_project %}<input type="hidden" name="project_id" value="{{ selected_project }}">{% endif %}
     <input class="sp-search" name="q" value="{{ q }}" placeholder="🔍 搜尋（空間 / 工項 / 備註）">
   </form>
 
-  {% if areas or tags or sel_area or sel_tag %}
   <div class="sp-chips">
+    <a class="sp-chip {% if fav %}on{% endif %}"
+       href="{{ url_for('site_photos', project_id=selected_project, fav=(none if fav else 1), area=sel_area or none, tag=sel_tag or none, q=q or none) }}">⭐ 最愛{% if fav %}<span class="x">✕</span>{% endif %}</a>
     {% for a in areas %}
       <a class="sp-chip {% if sel_area==a %}on{% endif %}"
          href="{{ url_for('site_photos', project_id=selected_project, area=(none if sel_area==a else a), tag=sel_tag or none, q=q or none) }}">📍 {{ a }}{% if sel_area==a %}<span class="x">✕</span>{% endif %}</a>
     {% endfor %}
-    {% for t in tags %}
+    {% for t in filter_tags %}
       <a class="sp-chip {% if sel_tag==t %}on{% endif %}"
          href="{{ url_for('site_photos', project_id=selected_project, tag=(none if sel_tag==t else t), area=sel_area or none, q=q or none) }}">🔧 {{ t }}{% if sel_tag==t %}<span class="x">✕</span>{% endif %}</a>
     {% endfor %}
-    {% if sel_area or sel_tag or q %}
+    {% if sel_area or sel_tag or q or fav %}
       <a class="sp-clear" href="{{ url_for('site_photos', project_id=selected_project) }}">清除篩選</a>
     {% endif %}
   </div>
-  {% endif %}
 
   {% if groups %}
     {% for g in groups %}
@@ -47,13 +49,15 @@
           {% elif s.status=='discuss' %}<span class="sp-flag discuss">?</span>
           {% elif s.status=='unclassified' %}<span class="sp-flag unclassified">·</span>
           {% elif s.issue_resolved %}<span class="sp-flag" style="background:var(--green)">✓</span>{% endif %}
+          <button class="sp-star {% if s.favorite %}on{% endif %}" id="star-{{ s.id }}"
+                  onclick="toggleFav(event,{{ s.id }})">{% if s.favorite %}★{% else %}☆{% endif %}</button>
         </div>
         <div class="sp-body">
           <div class="sp-line">
             <span>🕐 {{ s._time }}</span>
             {% if s.area %}<span class="sp-loc">📍 {{ s.area }}</span>{% endif %}
           </div>
-          {% if s.tag %}<div class="sp-line"><span class="sp-tagpill">🔧 {{ s.tag }}</span></div>{% endif %}
+          {% if s._tags %}<div class="sp-line">{% for t in s._tags %}<span class="sp-tagpill">🔧 {{ t }}</span>{% endfor %}</div>{% endif %}
           {% if s.note %}<div class="sp-note">{{ s.note }}</div>{% endif %}
         </div>
       </div>
@@ -90,15 +94,11 @@
     </div>
   </div>
   <div class="form-grid">
-    <div class="form-group"><label>空間位置</label><input type="text" id="e-area" placeholder="例：客廳"></div>
-    <div class="form-group"><label>工種分類</label><input type="text" id="e-tag" list="tag-list" placeholder="例：泥作"></div>
+    <div class="form-group"><label>空間位置</label><input type="text" id="e-area" list="area-list" placeholder="例：客廳"></div>
+    <div class="form-group form-full"><label>工種分類（可複選）</label><div class="tp" id="e-tagpick"></div></div>
     <div class="form-group form-full"><label>備註</label><textarea id="e-note" style="min-height:56px"></textarea></div>
   </div>
-  <datalist id="tag-list">
-    <option value="保護/拆除"><option value="水電"><option value="泥作"><option value="木作">
-    <option value="油漆"><option value="磁磚"><option value="防水"><option value="輕隔間">
-    <option value="鋁窗"><option value="清潔">
-  </datalist>
+  <datalist id="area-list">{% for a in areas %}<option value="{{ a }}">{% endfor %}</datalist>
   <div class="modal-actions" style="margin-top:1rem">
     <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-right:auto" onclick="eDelete()">刪除</button>
     <button class="btn btn-outline" onclick="closeEdit()">關閉</button>
@@ -111,21 +111,29 @@
 
 {% block scripts %}
 <script>
-const SP_PROJ = {{ selected_project|tojson if selected_project else 'null' }};
+const PRESET_TAGS = {{ tags|tojson }};
 function goProj(v){ location = '{{ url_for("site_photos") }}' + (v ? ('?project_id='+v) : ''); }
 function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1600); }
 
+const eTag = TagPick('e-tagpick', PRESET_TAGS, '');
 let eId=null, eStatus='done';
 function openEdit(id, status, note, tag, area, project){
   eId=id;
   document.getElementById('e-img').src='/site-photo/'+id+'/img';
   document.getElementById('e-proj').textContent = project ? ('📍 '+project) : '未指定案場';
   document.getElementById('e-note').value=note||'';
-  document.getElementById('e-tag').value=tag||'';
+  eTag.reset(tag||'');
   document.getElementById('e-area').value=area||'';
   eSetStatus(status||'unclassified');
   document.getElementById('sheet-ov').classList.add('open');
   document.getElementById('sheet').classList.add('open');
+}
+async function toggleFav(ev, id){
+  ev.stopPropagation();
+  const btn=document.getElementById('star-'+id);
+  const on = !btn.classList.contains('on');
+  const r = await fetch('/api/site-photo/'+id, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({favorite:on?1:0})});
+  if((await r.json()).ok){ btn.classList.toggle('on',on); btn.textContent = on?'★':'☆'; }
 }
 function closeEdit(){
   document.getElementById('sheet-ov').classList.remove('open');
@@ -141,7 +149,7 @@ async function eSave(){
   const r = await fetch('/api/site-photo/'+eId, {method:'PATCH',headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ status:eStatus,
       note:document.getElementById('e-note').value.trim(),
-      tag:document.getElementById('e-tag').value.trim(),
+      tag:eTag.value(),
       area:document.getElementById('e-area').value.trim() })});
   if((await r.json()).ok) location.reload();
 }

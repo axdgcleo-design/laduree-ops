@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}拍照 — 工地照片{% endblock %}
 {% block head %}
+<script src="{{ url_for('static', filename='js/sitephoto.js') }}"></script>
 <style>
   .cam-video { width:100%; max-width:380px; aspect-ratio:3/4; border-radius:12px;
     background:#111; object-fit:cover; border:1px solid var(--line); }
@@ -75,15 +76,11 @@
     </div>
   </div>
   <div class="form-grid">
-    <div class="form-group"><label>空間位置</label><input type="text" id="c-area" placeholder="例：客廳"></div>
-    <div class="form-group"><label>工種分類</label><input type="text" id="c-tag" list="tag-list" placeholder="例：泥作"></div>
+    <div class="form-group"><label>空間位置</label><input type="text" id="c-area" list="area-list" placeholder="例：客廳"></div>
+    <div class="form-group form-full"><label>工種分類（可複選）</label><div class="tp" id="c-tagpick"></div></div>
     <div class="form-group form-full"><label>備註</label><textarea id="c-note" style="min-height:56px"></textarea></div>
   </div>
-  <datalist id="tag-list">
-    <option value="保護/拆除"><option value="水電"><option value="泥作"><option value="木作">
-    <option value="油漆"><option value="磁磚"><option value="防水"><option value="輕隔間">
-    <option value="鋁窗"><option value="清潔">
-  </datalist>
+  <datalist id="area-list">{% for a in areas %}<option value="{{ a }}">{% endfor %}</datalist>
   <div class="modal-actions" style="margin-top:1rem">
     <button class="btn btn-outline" onclick="cancelClassify()">取消</button>
     <button class="btn btn-primary" id="c-save" onclick="saveClassify()">儲存</button>
@@ -101,6 +98,8 @@ function projId(){ return document.getElementById('cam-proj').value || null; }
 
 const video  = document.getElementById('cam-video');
 const canvas = document.getElementById('cam-canvas');
+const PRESET_TAGS = {{ tags|tojson }};
+const cTag = TagPick('c-tagpick', PRESET_TAGS, '');
 let stream = null, savedCount = 0, cStatus = 'done', shotUrl = '';
 
 /* ── 啟動即時相機 ── */
@@ -171,7 +170,7 @@ function openClassify(){
   cStatus='done'; cSetStatus('done');
   document.getElementById('c-img').src=shotUrl;
   document.getElementById('c-area').value='';
-  document.getElementById('c-tag').value='';
+  cTag.reset('');
   document.getElementById('c-note').value='';
   document.getElementById('sheet-ov').classList.add('open');
   document.getElementById('sheet').classList.add('open');
@@ -186,7 +185,7 @@ async function saveClassify(){
   const btn=document.getElementById('c-save'); btn.disabled=true; btn.textContent='儲存中…';
   const ok = await postPhoto({ image_data:shotUrl, status:cStatus,
     area:document.getElementById('c-area').value.trim(),
-    tag:document.getElementById('c-tag').value.trim(),
+    tag:cTag.value(),
     note:document.getElementById('c-note').value.trim() });
   btn.disabled=false; btn.textContent='儲存';
   if(ok){ closeSheet(); savedCount++; document.getElementById('cam-count').textContent='📸 本次已存 '+savedCount+' 張'; toast('已儲存 ✅'); }
