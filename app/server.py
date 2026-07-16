@@ -236,6 +236,14 @@ def init_db():
             note TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
         );
+        CREATE TABLE IF NOT EXISTS site_photos (
+            id SERIAL PRIMARY KEY,
+            project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+            image_data TEXT DEFAULT '', mime TEXT DEFAULT 'image/jpeg',
+            note TEXT DEFAULT '', tag TEXT DEFAULT '', area TEXT DEFAULT '',
+            status TEXT DEFAULT 'record', fixed_at TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT NOW()
+        );
         CREATE TABLE IF NOT EXISTS company_info (
             id INTEGER PRIMARY KEY DEFAULT 1,
             name TEXT DEFAULT '漣一設計有限公司',
@@ -349,6 +357,14 @@ def init_db():
             image_url TEXT DEFAULT '', source TEXT DEFAULT 'web',
             note TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now','localtime')),
             updated_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+        CREATE TABLE IF NOT EXISTS site_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+            image_data TEXT DEFAULT '', mime TEXT DEFAULT 'image/jpeg',
+            note TEXT DEFAULT '', tag TEXT DEFAULT '', area TEXT DEFAULT '',
+            status TEXT DEFAULT 'record', fixed_at TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now','localtime'))
         );
         CREATE TABLE IF NOT EXISTS company_info (
             id INTEGER PRIMARY KEY DEFAULT 1,
@@ -582,6 +598,132 @@ def api_task_delete(tid):
     execute(f"DELETE FROM tasks WHERE id={_ph()}",(tid,))
     commit()
     return jsonify({'ok':True})
+
+# ── 工地照片 Site Photos ──────────────────────────────────────────────
+SITE_STATUSES = ('record','issue','fixed')
+
+@app.route('/site-photos')
+def site_photos():
+    ph = _ph()
+    pid = request.args.get('project_id')
+    st  = request.args.get('status','all')
+    projects = fetchall("SELECT * FROM projects ORDER BY name")
+    # 不撈 image_data，避免看板載入大量 base64；圖片走 /site-photo/<id>/img
+    sql = ("SELECT s.id,s.project_id,s.mime,s.note,s.tag,s.area,s.status,"
+           "s.fixed_at,s.created_at,p.name as project_name "
+           "FROM site_photos s LEFT JOIN projects p ON s.project_id=p.id WHERE 1=1")
+    params = []
+    if pid: sql += f" AND s.project_id={ph}"; params.append(pid)
+    if st != 'all': sql += f" AND s.status={ph}"; params.append(st)
+    sql += " ORDER BY s.created_at DESC"
+    photos = fetchall(sql, params)
+    # 狀態統計（尊重案場篩選）
+    csql = "SELECT status, COUNT(*) as c FROM site_photos WHERE 1=1"
+    cparams = []
+    if pid: csql += f" AND project_id={ph}"; cparams.append(pid)
+    csql += " GROUP BY status"
+    crows = fetchall(csql, cparams)
+    counts = {'record':0,'issue':0,'fixed':0}
+    for r in crows: counts[r['status']] = r['c']
+    counts['all'] = counts['record'] + counts['issue'] + counts['fixed']
+    return render_template('site_photos.html', photos=photos, projects=projects,
+                           counts=counts, selected_project=pid,
+                           selected_status=st, fmt=fmt)
+
+@app.route('/api/site-photo', methods=['POST'])
+def api_site_photo_add():
+    d = request.json or {}; ph = _ph()
+    img = d.get('image_data','') or ''
+    if img.startswith('data:') and ',' in img:   # 去掉 data URI 前綴
+        img = img.split(',',1)[1]
+    if not img:
+        return jsonify({'ok':False,'error':'no image'}), 400
+    status = d.get('status','record')
+    if status not in SITE_STATUSES: status = 'record'
+    execute(f"""INSERT INTO site_photos
+        (project_id,image_data,mime,note,tag,area,status)
+        VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+        (d.get('project_id') or None, img, d.get('mime','image/jpeg'),
+         d.get('note',''), d.get('tag',''), d.get('area',''), status))
+    commit()
+    return jsonify({'ok':True,'id':last_insert_id()})
+
+@app.route('/api/site-photo/<int:sid>', methods=['PATCH'])
+def api_site_photo_update(sid):
+    d = request.json or {}; ph = _ph()
+    fields, vals = [], []
+    for k in ('note','tag','area','project_id'):
+        if k in d: fields.append(f"{k}={ph}"); vals.append(d[k])
+    if 'status' in d:
+        st = d['status'] if d['status'] in SITE_STATUSES else 'record'
+        fields.append(f"status={ph}"); vals.append(st)
+        # 標記已修復 → 記下修復日期（回答「什麼時候修好」）；轉回其他狀態則清空
+        fields.append(f"fixed_at={ph}")
+        vals.append(date.today().isoformat() if st == 'fixed' else '')
+    if not fields: return jsonify({'ok':False})
+    vals.append(sid)
+    execute(f"UPDATE site_photos SET {','.join(fields)} WHERE id={ph}", vals)
+    commit()
+    return jsonify({'ok':True})
+
+@app.route('/api/site-photo/<int:sid>', methods=['DELETE'])
+def api_site_photo_delete(sid):
+    execute(f"DELETE FROM site_photos WHERE id={_ph()}", (sid,))
+    commit()
+    return jsonify({'ok':True})
+
+@app.route('/site-photo/<int:sid>/img')
+def site_photo_img(sid):
+    import base64
+    from flask import Response
+    ph = _ph()
+    row = fetchone(f"SELECT image_data,mime FROM site_photos WHERE id={ph}", (sid,))
+    if not row or not row['image_data']:
+        return "not found", 404
+    try:
+        raw = base64.b64decode(row['image_data'])
+    except Exception:
+        return "bad image", 500
+    resp = Response(raw, mimetype=row['mime'] or 'image/jpeg')
+    resp.headers['Cache-Control'] = 'public, max-age=31536000'
+    return resp
+
+# ── PWA（可安裝到手機主畫面）─────────────────────────────────────────
+@app.route('/manifest.webmanifest')
+def manifest():
+    from flask import Response
+    data = {
+        "name": "Ladurée OPS",
+        "short_name": "OPS",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#f4f1ec",
+        "theme_color": "#1a1a1a",
+        "icons": [
+            {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/static/icons/icon-512-maskable.png", "sizes": "512x512",
+             "type": "image/png", "purpose": "maskable"}
+        ]
+    }
+    return Response(json.dumps(data), mimetype='application/manifest+json')
+
+@app.route('/sw.js')
+def service_worker():
+    from flask import Response
+    js = (
+        "const CACHE='ops-v1';\n"
+        "self.addEventListener('install',e=>self.skipWaiting());\n"
+        "self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));\n"
+        "self.addEventListener('fetch',e=>{\n"
+        "  if(e.request.method!=='GET'){return;}\n"
+        "  e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));\n"
+        "});\n"
+    )
+    resp = Response(js, mimetype='application/javascript')
+    resp.headers['Service-Worker-Allowed'] = '/'
+    return resp
 
 @app.route('/finance/vendors')
 def finance_vendors():
