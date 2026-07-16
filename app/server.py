@@ -244,6 +244,9 @@ def init_db():
             status TEXT DEFAULT 'record', fixed_at TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT NOW()
         );
+        ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS parent_id INTEGER;
+        ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS issue_found TEXT DEFAULT '';
+        ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS issue_resolved TEXT DEFAULT '';
         CREATE TABLE IF NOT EXISTS company_info (
             id INTEGER PRIMARY KEY DEFAULT 1,
             name TEXT DEFAULT '漣一設計有限公司',
@@ -376,6 +379,13 @@ def init_db():
         );
         INSERT OR IGNORE INTO company_info (id) VALUES (1);
         """)
+        # 遷移：補上 Phase 2 欄位（父子關聯、問題發現/解決日）
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(site_photos)")}
+        for c, ddl in (('parent_id','INTEGER'),
+                       ('issue_found',"TEXT DEFAULT ''"),
+                       ('issue_resolved',"TEXT DEFAULT ''")):
+            if c not in cols:
+                conn.execute(f"ALTER TABLE site_photos ADD COLUMN {c} {ddl}")
         conn.commit(); conn.close()
 
 # 啟動時自動建表（gunicorn 不走 __main__，故在 import 時執行一次；
@@ -611,7 +621,7 @@ def _norm_dt(v):
 
 def _pending_count(pid):
     ph = _ph()
-    q = ("SELECT COUNT(*) as c FROM site_photos WHERE status IN "
+    q = ("SELECT COUNT(*) as c FROM site_photos WHERE parent_id IS NULL AND status IN "
          "('unclassified','discuss','fix')")
     params = []
     if pid: q += f" AND project_id={ph}"; params.append(pid)
@@ -620,7 +630,7 @@ def _pending_count(pid):
 
 def _site_photo_cols():
     return ("SELECT s.id,s.project_id,s.mime,s.note,s.tag,s.area,s.status,"
-            "s.fixed_at,s.created_at,p.name as project_name "
+            "s.fixed_at,s.issue_resolved,s.created_at,p.name as project_name "
             "FROM site_photos s LEFT JOIN projects p ON s.project_id=p.id WHERE 1=1")
 
 # 照片集：依日期分組，可依空間/工項篩選、搜尋
@@ -632,7 +642,7 @@ def site_photos():
     tag  = request.args.get('tag','')
     q    = request.args.get('q','').strip()
     projects = fetchall("SELECT * FROM projects ORDER BY name")
-    sql = _site_photo_cols(); params = []
+    sql = _site_photo_cols() + " AND s.parent_id IS NULL"; params = []
     if pid:  sql += f" AND s.project_id={ph}"; params.append(pid)
     if area: sql += f" AND s.area={ph}";       params.append(area)
     if tag:  sql += f" AND s.tag={ph}";        params.append(tag)
@@ -678,13 +688,13 @@ def site_pending():
     sub = request.args.get('sub','unclassified')
     if sub not in PENDING_STATUSES: sub = 'unclassified'
     projects = fetchall("SELECT * FROM projects ORDER BY name")
-    sql = _site_photo_cols() + f" AND s.status={ph}"; params = [sub]
+    sql = _site_photo_cols() + f" AND s.parent_id IS NULL AND s.status={ph}"; params = [sub]
     if pid: sql += f" AND s.project_id={ph}"; params.append(pid)
     sql += " ORDER BY s.created_at DESC"
     photos = fetchall(sql, params)
     for p in photos: p['_dt'] = _norm_dt(p['created_at'])[:16]
     # 各子狀態計數
-    csql = "SELECT status, COUNT(*) as c FROM site_photos WHERE status IN ('unclassified','discuss','fix')"
+    csql = "SELECT status, COUNT(*) as c FROM site_photos WHERE parent_id IS NULL AND status IN ('unclassified','discuss','fix')"
     cparams = []
     if pid: csql += f" AND project_id={ph}"; cparams.append(pid)
     csql += " GROUP BY status"
@@ -722,6 +732,11 @@ def api_site_photo_update(sid):
     if 'status' in d:
         st = d['status'] if d['status'] in SITE_STATUSES else 'unclassified'
         fields.append(f"status={ph}"); vals.append(st)
+        # 標為待修改 → 若尚未記錄「問題發現日」，補上今天
+        if st == 'fix':
+            cur = fetchone(f"SELECT issue_found FROM site_photos WHERE id={ph}", (sid,))
+            if cur and not (cur.get('issue_found') or ''):
+                fields.append(f"issue_found={ph}"); vals.append(date.today().isoformat())
     if not fields: return jsonify({'ok':False})
     vals.append(sid)
     execute(f"UPDATE site_photos SET {','.join(fields)} WHERE id={ph}", vals)
@@ -730,9 +745,70 @@ def api_site_photo_update(sid):
 
 @app.route('/api/site-photo/<int:sid>', methods=['DELETE'])
 def api_site_photo_delete(sid):
-    execute(f"DELETE FROM site_photos WHERE id={_ph()}", (sid,))
+    ph = _ph()
+    # 一併刪除其處理後照片
+    execute(f"DELETE FROM site_photos WHERE parent_id={ph}", (sid,))
+    execute(f"DELETE FROM site_photos WHERE id={ph}", (sid,))
     commit()
     return jsonify({'ok':True})
+
+# ── 問題處理：處理後照片、解決日、生成報告 ──────────────────────────
+def _issue_row(sid):
+    ph = _ph()
+    return fetchone(
+        "SELECT s.id,s.project_id,s.note,s.tag,s.area,s.status,s.issue_found,"
+        f"s.issue_resolved,s.created_at,p.name as project_name "
+        f"FROM site_photos s LEFT JOIN projects p ON s.project_id=p.id WHERE s.id={ph}",
+        (sid,))
+
+def _after_photos(sid):
+    ph = _ph()
+    rows = fetchall(f"SELECT id,note,created_at FROM site_photos WHERE parent_id={ph} ORDER BY created_at", (sid,))
+    for r in rows: r['_dt'] = _norm_dt(r['created_at'])[:16]
+    return rows
+
+@app.route('/site-photo/<int:sid>/issue')
+def site_photo_issue(sid):
+    photo = _issue_row(sid)
+    if not photo: return redirect(url_for('site_photos'))
+    photo['_found'] = photo.get('issue_found') or _norm_dt(photo['created_at'])[:10]
+    return render_template('site_issue.html', photo=photo, afters=_after_photos(sid),
+                           status_labels=STATUS_LABELS)
+
+@app.route('/api/site-photo/<int:sid>/after', methods=['POST'])
+def api_site_photo_after(sid):
+    d = request.json or {}; ph = _ph()
+    parent = fetchone(f"SELECT project_id FROM site_photos WHERE id={ph}", (sid,))
+    if not parent: return jsonify({'ok':False,'error':'no parent'}), 404
+    img = d.get('image_data','') or ''
+    if img.startswith('data:') and ',' in img: img = img.split(',',1)[1]
+    if not img: return jsonify({'ok':False,'error':'no image'}), 400
+    execute(f"""INSERT INTO site_photos
+        (project_id,image_data,mime,status,parent_id,note)
+        VALUES ({ph},{ph},{ph},'done',{ph},{ph})""",
+        (parent['project_id'], img, d.get('mime','image/jpeg'), sid, d.get('note','')))
+    commit()
+    return jsonify({'ok':True,'id':last_insert_id()})
+
+@app.route('/api/site-photo/<int:sid>/resolve', methods=['POST'])
+def api_site_photo_resolve(sid):
+    d = request.json or {}; ph = _ph()
+    if d.get('resolved', True):
+        execute(f"UPDATE site_photos SET issue_resolved={ph}, status='done' WHERE id={ph}",
+                (date.today().isoformat(), sid))
+    else:
+        execute(f"UPDATE site_photos SET issue_resolved='', status='fix' WHERE id={ph}", (sid,))
+    commit()
+    return jsonify({'ok':True})
+
+@app.route('/site-photo/<int:sid>/report')
+def site_photo_report(sid):
+    photo = _issue_row(sid)
+    if not photo: return "not found", 404
+    photo['_found'] = photo.get('issue_found') or _norm_dt(photo['created_at'])[:10]
+    company = fetchone("SELECT * FROM company_info WHERE id=1") or {}
+    return render_template('site_report.html', photo=photo, afters=_after_photos(sid),
+                           company=company)
 
 @app.route('/site-photo/<int:sid>/img')
 def site_photo_img(sid):

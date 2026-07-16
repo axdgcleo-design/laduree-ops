@@ -42,10 +42,11 @@
       <div class="sp-card" id="sp-{{ s.id }}">
         <div class="sp-thumb-wrap">
           <img class="sp-thumb" loading="lazy" src="{{ url_for('site_photo_img', sid=s.id) }}"
-               onclick='openEdit({{ s.id }}, {{ s.status|tojson }}, {{ (s.note or "")|tojson }}, {{ (s.tag or "")|tojson }}, {{ (s.area or "")|tojson }}, {{ (s.project_name or "")|tojson }})'>
+               onclick='{% if s.status=="fix" or s.issue_resolved %}location.href="{{ url_for("site_photo_issue", sid=s.id) }}"{% else %}openEdit({{ s.id }}, {{ s.status|tojson }}, {{ (s.note or "")|tojson }}, {{ (s.tag or "")|tojson }}, {{ (s.area or "")|tojson }}, {{ (s.project_name or "")|tojson }}){% endif %}'>
           {% if s.status=='fix' %}<span class="sp-flag fix">!</span>
           {% elif s.status=='discuss' %}<span class="sp-flag discuss">?</span>
-          {% elif s.status=='unclassified' %}<span class="sp-flag unclassified">·</span>{% endif %}
+          {% elif s.status=='unclassified' %}<span class="sp-flag unclassified">·</span>
+          {% elif s.issue_resolved %}<span class="sp-flag" style="background:var(--green)">✓</span>{% endif %}
         </div>
         <div class="sp-body">
           <div class="sp-line">

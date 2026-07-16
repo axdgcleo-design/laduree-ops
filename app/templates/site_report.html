@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工地問題處理報告</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif; color:#1a1a1a;
+    background:#f4f1ec; line-height:1.6; padding:1.2rem; }
+  .sheet { max-width:720px; margin:0 auto; background:#fff; border-radius:10px; padding:2rem 2.2rem;
+    box-shadow:0 2px 12px rgba(0,0,0,.08); }
+  .rhead { border-bottom:2px solid #1a1a1a; padding-bottom:.9rem; margin-bottom:1.2rem; }
+  .rhead .co { font-size:1.3rem; font-weight:700; letter-spacing:.05em; }
+  .rhead .en { font-size:.8rem; color:#a09890; letter-spacing:.12em; }
+  .rtitle { font-size:1.05rem; font-weight:600; margin-top:.5rem; }
+  .meta { display:grid; grid-template-columns:repeat(2,1fr); gap:.35rem 1.5rem; font-size:.85rem; margin-bottom:1.4rem; }
+  .meta .k { color:#6b6560; }
+  .sec-label { display:inline-block; font-size:.85rem; font-weight:600; padding:.25rem .8rem; border-radius:4px; margin-bottom:.7rem; }
+  .sec-issue { background:#fdf0ee; color:#c44536; }
+  .sec-fixed { background:#edf7f1; color:#2d6a4f; }
+  .big-img { width:100%; max-height:420px; object-fit:contain; background:#f4f1ec; border:1px solid #ddd8d0; border-radius:8px; }
+  .note { font-size:.88rem; color:#3a3a3a; margin-top:.6rem; padding:.6rem .8rem; background:#faf8f4; border-left:3px solid #c44536; border-radius:0 4px 4px 0; }
+  .after-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:.7rem; margin-top:.3rem; }
+  .after-grid img { width:100%; aspect-ratio:4/3; object-fit:cover; border:1px solid #ddd8d0; border-radius:8px; }
+  .divider { height:1px; background:#ddd8d0; margin:1.6rem 0; }
+  .rfoot { margin-top:1.6rem; font-size:.72rem; color:#a09890; text-align:center; }
+  .bar { position:fixed; top:0; left:0; right:0; background:#1a1a1a; padding:.6rem; text-align:center; }
+  .bar button, .bar a { font-size:.85rem; padding:.45rem 1.1rem; border-radius:4px; border:none; cursor:pointer; margin:0 .3rem; text-decoration:none; }
+  .bar button { background:#c44536; color:#fff; }
+  .bar a { background:#3a3632; color:#f4f1ec; }
+  @media print {
+    body { background:#fff; padding:0; }
+    .sheet { box-shadow:none; max-width:100%; padding:0; }
+    .bar { display:none; }
+    .big-img { max-height:none; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button onclick="window.print()">🖨 列印 / 存成 PDF</button>
+  <a href="{{ url_for('site_photo_issue', sid=photo.id) }}">← 返回</a>
+</div>
+
+<div class="sheet" style="margin-top:3rem">
+  <div class="rhead">
+    <div class="co">{{ company.name or '漣一設計有限公司' }}</div>
+    <div class="en">{{ company.name_en or 'LA DURÉE' }}</div>
+    <div class="rtitle">工地問題處理報告</div>
+  </div>
+
+  <div class="meta">
+    <div><span class="k">案場：</span>{{ photo.project_name or '—' }}</div>
+    <div><span class="k">位置：</span>{{ photo.area or '—' }}</div>
+    <div><span class="k">工項：</span>{{ photo.tag or '—' }}</div>
+    <div><span class="k">狀態：</span>{% if photo.issue_resolved %}已解決{% else %}處理中{% endif %}</div>
+    <div><span class="k">問題發現：</span>{{ photo._found }}</div>
+    <div><span class="k">問題解決：</span>{{ photo.issue_resolved or '—' }}</div>
+  </div>
+
+  <div class="sec-label sec-issue">⚠️ 問題發現</div>
+  <img class="big-img" src="{{ url_for('site_photo_img', sid=photo.id) }}">
+  {% if photo.note %}<div class="note">{{ photo.note }}</div>{% endif %}
+
+  <div class="divider"></div>
+
+  <div class="sec-label sec-fixed">✅ 問題解決{% if photo.issue_resolved %}（{{ photo.issue_resolved }}）{% endif %}</div>
+  {% if afters %}
+  <div class="after-grid">
+    {% for a in afters %}<img src="{{ url_for('site_photo_img', sid=a.id) }}">{% endfor %}
+  </div>
+  {% else %}
+  <div style="font-size:.85rem;color:#a09890">尚未加入處理後照片。</div>
+  {% endif %}
+
+  <div class="rfoot">本報告由 {{ company.name or '漣一設計' }} 工地照片系統產生</div>
+</div>
+</body>
+</html>
