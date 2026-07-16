@@ -1,351 +1,153 @@
 {% extends 'base.html' %}
-{% block title %}工地照片 — Laduree OPS{% endblock %}
-{% block head %}
-<style>
-  .sp-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: .75rem;
-  }
-  .sp-card {
-    background: var(--white); border: 1px solid var(--line);
-    border-radius: 4px; overflow: hidden; box-shadow: var(--shadow);
-    display: flex; flex-direction: column;
-  }
-  .sp-thumb {
-    width: 100%; aspect-ratio: 1/1; object-fit: cover;
-    background: #ece7df; cursor: pointer; display: block;
-  }
-  .sp-body { padding: .5rem .6rem .6rem; display: flex; flex-direction: column; gap: .3rem; }
-  .sp-badge { font-size: .6rem; padding: 1px 7px; border-radius: 2px; font-weight: 500; display: inline-block; }
-  .sp-b-record { background: var(--blue-bg);  color: var(--blue); }
-  .sp-b-issue  { background: var(--red-bg);   color: var(--red); }
-  .sp-b-fixed  { background: var(--green-bg); color: var(--green); }
-  .sp-tag { font-size: .6rem; padding: 1px 7px; border-radius: 2px; background: #f0ece6; color: var(--mid); }
-  .sp-meta { font-size: .68rem; color: var(--muted); display: flex; gap: .4rem; flex-wrap: wrap; }
-  .sp-note { font-size: .74rem; color: var(--mid); line-height: 1.4;
-             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  /* Lightbox */
-  .lb-overlay {
-    position: fixed; inset: 0; background: rgba(20,18,16,.86);
-    display: none; align-items: center; justify-content: center; z-index: 200; padding: 1rem;
-  }
-  .lb-overlay.open { display: flex; }
-  .lb-box {
-    background: var(--cream); border-radius: 6px; max-width: 560px; width: 100%;
-    max-height: 92vh; overflow-y: auto;
-  }
-  .lb-img { width: 100%; max-height: 55vh; object-fit: contain; background: #000; display: block; }
-  .lb-pad { padding: 1rem 1.15rem 1.25rem; }
-  .seg { display: flex; gap: .4rem; flex-wrap: wrap; }
-  .seg button {
-    font-size: .76rem; padding: .35rem .7rem; border: 1px solid var(--line);
-    background: var(--white); border-radius: 3px; cursor: pointer; color: var(--mid);
-  }
-  .seg button.on-record { background: var(--blue);  color: #fff; border-color: var(--blue); }
-  .seg button.on-issue  { background: var(--red);   color: #fff; border-color: var(--red); }
-  .seg button.on-fixed  { background: var(--green); color: #fff; border-color: var(--green); }
-  .fab {
-    position: fixed; right: 1.1rem; bottom: 1.1rem; z-index: 90;
-    width: 56px; height: 56px; border-radius: 50%; border: none;
-    background: var(--red); color: #fff; font-size: 1.5rem; cursor: pointer;
-    box-shadow: 0 4px 14px rgba(196,69,54,.4);
-  }
-</style>
-{% endblock %}
+{% block title %}照片集 — 工地照片{% endblock %}
 {% block body %}
-<div class="page">
-  <div class="page-header">
-    <div>
-      <span class="page-title">工地照片</span>
-      <span class="page-subtitle">{{ counts.all }} 張 · 讓每張照片都有交代</span>
-    </div>
-    <button class="btn btn-primary btn-sm" onclick="openUpload()">＋ 拍照 ／ 上傳</button>
-  </div>
+<div class="page sp-page">
 
-  <!-- 篩選 -->
-  <div style="display:flex;gap:.5rem;margin-bottom:1.1rem;flex-wrap:wrap;align-items:center">
-    {% set stq = {'project_id': selected_project} if selected_project else {} %}
-    <a href="{{ url_for('site_photos', **stq) }}"
-       class="btn btn-sm {% if selected_status=='all' %}btn-primary{% else %}btn-outline{% endif %}">全部 {{ counts.all }}</a>
-    <a href="{{ url_for('site_photos', status='record', **stq) }}"
-       class="btn btn-sm {% if selected_status=='record' %}btn-primary{% else %}btn-outline{% endif %}">📷 紀錄 {{ counts.record }}</a>
-    <a href="{{ url_for('site_photos', status='issue', **stq) }}"
-       class="btn btn-sm {% if selected_status=='issue' %}btn-primary{% else %}btn-outline{% endif %}">🔴 問題 {{ counts.issue }}</a>
-    <a href="{{ url_for('site_photos', status='fixed', **stq) }}"
-       class="btn btn-sm {% if selected_status=='fixed' %}btn-primary{% else %}btn-outline{% endif %}">✅ 已修復 {{ counts.fixed }}</a>
-    <select onchange="location='{{ url_for('site_photos') }}?status={{ selected_status }}'+(this.value?'&project_id='+this.value:'')"
-            style="padding:.3rem .75rem;border:1px solid var(--line);background:var(--cream);border-radius:2px;font-size:.78rem;margin-left:auto">
-      <option value="">所有案場</option>
+  <div class="sp-topbar">
+    <select class="sp-proj" onchange="goProj(this.value)">
+      <option value="">全部案場</option>
       {% for p in projects %}
       <option value="{{ p.id }}" {% if selected_project == p.id|string %}selected{% endif %}>{{ p.name }}</option>
       {% endfor %}
     </select>
+    {% if pending %}<span class="sp-pending-pill">⚠️ 待處理 {{ pending }}</span>{% endif %}
   </div>
 
-  {% if photos %}
-  <div class="sp-grid">
-    {% for s in photos %}
-    <div class="sp-card" id="sp-{{ s.id }}">
-      <img class="sp-thumb" loading="lazy" src="{{ url_for('site_photo_img', sid=s.id) }}"
-           alt="工地照片"
-           onclick='openDetail({{ s.id }}, {{ s.status|tojson }}, {{ (s.note or "")|tojson }}, {{ (s.tag or "")|tojson }}, {{ (s.area or "")|tojson }}, {{ (s.project_name or "")|tojson }}, {{ (s.fixed_at or "")|tojson }})'>
-      <div class="sp-body">
-        <div style="display:flex;gap:.35rem;align-items:center;flex-wrap:wrap">
-          {% if s.status=='issue' %}<span class="sp-badge sp-b-issue">🔴 問題</span>
-          {% elif s.status=='fixed' %}<span class="sp-badge sp-b-fixed">✅ 已修復</span>
-          {% else %}<span class="sp-badge sp-b-record">📷 紀錄</span>{% endif %}
-          {% if s.tag %}<span class="sp-tag">{{ s.tag }}</span>{% endif %}
+  <form method="get" action="{{ url_for('site_photos') }}">
+    {% if selected_project %}<input type="hidden" name="project_id" value="{{ selected_project }}">{% endif %}
+    <input class="sp-search" name="q" value="{{ q }}" placeholder="🔍 搜尋（空間 / 工項 / 備註）">
+  </form>
+
+  {% if areas or tags or sel_area or sel_tag %}
+  <div class="sp-chips">
+    {% for a in areas %}
+      <a class="sp-chip {% if sel_area==a %}on{% endif %}"
+         href="{{ url_for('site_photos', project_id=selected_project, area=(none if sel_area==a else a), tag=sel_tag or none, q=q or none) }}">📍 {{ a }}{% if sel_area==a %}<span class="x">✕</span>{% endif %}</a>
+    {% endfor %}
+    {% for t in tags %}
+      <a class="sp-chip {% if sel_tag==t %}on{% endif %}"
+         href="{{ url_for('site_photos', project_id=selected_project, tag=(none if sel_tag==t else t), area=sel_area or none, q=q or none) }}">🔧 {{ t }}{% if sel_tag==t %}<span class="x">✕</span>{% endif %}</a>
+    {% endfor %}
+    {% if sel_area or sel_tag or q %}
+      <a class="sp-clear" href="{{ url_for('site_photos', project_id=selected_project) }}">清除篩選</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if groups %}
+    {% for g in groups %}
+    <div class="sp-day">{{ g.day }}</div>
+    <div class="sp-grid">
+      {% for s in g.rows %}
+      <div class="sp-card" id="sp-{{ s.id }}">
+        <div class="sp-thumb-wrap">
+          <img class="sp-thumb" loading="lazy" src="{{ url_for('site_photo_img', sid=s.id) }}"
+               onclick='openEdit({{ s.id }}, {{ s.status|tojson }}, {{ (s.note or "")|tojson }}, {{ (s.tag or "")|tojson }}, {{ (s.area or "")|tojson }}, {{ (s.project_name or "")|tojson }})'>
+          {% if s.status=='fix' %}<span class="sp-flag fix">!</span>
+          {% elif s.status=='discuss' %}<span class="sp-flag discuss">?</span>
+          {% elif s.status=='unclassified' %}<span class="sp-flag unclassified">·</span>{% endif %}
         </div>
-        {% if s.note %}<div class="sp-note">{{ s.note }}</div>{% endif %}
-        <div class="sp-meta">
-          {% if s.project_name %}<span>📍 {{ s.project_name }}</span>{% endif %}
-          {% if s.area %}<span>{{ s.area }}</span>{% endif %}
+        <div class="sp-body">
+          <div class="sp-line">
+            <span>🕐 {{ s._time }}</span>
+            {% if s.area %}<span class="sp-loc">📍 {{ s.area }}</span>{% endif %}
+          </div>
+          {% if s.tag %}<div class="sp-line"><span class="sp-tagpill">🔧 {{ s.tag }}</span></div>{% endif %}
+          {% if s.note %}<div class="sp-note">{{ s.note }}</div>{% endif %}
         </div>
-        <div class="sp-meta">
-          <span>{{ s.created_at[:10] if s.created_at else '' }}</span>
-          {% if s.status=='fixed' and s.fixed_at %}<span style="color:var(--green)">修復於 {{ s.fixed_at }}</span>{% endif %}
-        </div>
-        {% if s.status=='issue' %}
-        <button class="btn btn-outline btn-sm" style="color:var(--green);border-color:var(--green);margin-top:.2rem"
-                onclick="markFixed({{ s.id }})">標記已修復</button>
-        {% endif %}
       </div>
+      {% endfor %}
     </div>
     {% endfor %}
-  </div>
   {% else %}
-  <div class="card">
+  <div class="card" style="margin-top:1.5rem">
     <div class="empty">
       <div class="empty-title">還沒有照片</div>
-      <div style="font-size:.8rem;color:var(--muted);margin-top:.4rem">按右下角＋，拍下工地現況、標記問題，之後都找得到。</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-top:.4rem">切到「拍照」開始記錄工地現況。</div>
     </div>
   </div>
   {% endif %}
 </div>
 
-<button class="fab" onclick="openUpload()" title="拍照／上傳">＋</button>
+{% set active='gallery' %}
+{% include '_site_tabs.html' %}
 
-<!-- 上傳 Modal -->
-<div class="modal-overlay" id="up-modal">
-  <div class="modal">
-    <div class="modal-title">拍照 ／ 上傳工地照片</div>
+<!-- 編輯 sheet -->
+<div class="sheet-overlay" id="sheet-ov" onclick="closeEdit()"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-grab"></div>
+  <img class="sheet-img" id="e-img" src="">
+  <div id="e-proj" style="font-size:.72rem;color:var(--muted);margin-bottom:.7rem"></div>
 
-    <div id="up-preview-wrap" style="display:none;margin-bottom:.85rem;text-align:center">
-      <img id="up-preview" style="max-width:100%;max-height:220px;border-radius:4px;border:1px solid var(--line)">
+  <div class="form-group" style="margin-bottom:.7rem">
+    <label>狀態</label>
+    <div class="seg" id="e-status">
+      <button type="button" data-v="done"    onclick="eSetStatus('done')">✅ 已分類</button>
+      <button type="button" data-v="fix"     onclick="eSetStatus('fix')">🔴 待修改</button>
+      <button type="button" data-v="discuss" onclick="eSetStatus('discuss')">💬 待討論</button>
+      <button type="button" data-v="unclassified" onclick="eSetStatus('unclassified')">◻️ 未分類</button>
     </div>
-
-    <div class="form-group" style="margin-bottom:.85rem">
-      <label>照片</label>
-      <input type="file" id="up-file" accept="image/*" capture="environment" onchange="onPick(event)">
-      <div style="font-size:.7rem;color:var(--muted);margin-top:.3rem">手機會直接開相機；照片會自動壓縮後上傳。</div>
-    </div>
-
-    <div class="form-group" style="margin-bottom:.85rem">
-      <label>這張照片是？</label>
-      <div class="seg" id="up-status">
-        <button type="button" data-v="record" class="on-record" onclick="pickStatus('record')">📷 紀錄現況</button>
-        <button type="button" data-v="issue" onclick="pickStatus('issue')">🔴 待修問題</button>
-      </div>
-    </div>
-
-    <div class="form-grid">
-      <div class="form-group">
-        <label>案場</label>
-        <select id="up-project">
-          <option value="">— 選擇案場 —</option>
-          {% for p in projects %}
-          <option value="{{ p.id }}" {% if selected_project == p.id|string %}selected{% endif %}>{{ p.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group">
-        <label>分類標籤</label>
-        <input type="text" id="up-tag" list="tag-list" placeholder="例：水電 / 泥作 / 油漆">
-        <datalist id="tag-list">
-          <option value="水電"><option value="泥作"><option value="木作">
-          <option value="油漆"><option value="磁磚"><option value="防水">
-          <option value="鋁窗"><option value="拆除"><option value="清潔">
-        </datalist>
-      </div>
-      <div class="form-group form-full">
-        <label>位置（選填）</label>
-        <input type="text" id="up-area" placeholder="例：二樓主臥 / 廚房">
-      </div>
-      <div class="form-group form-full">
-        <label>說明（照片背後的脈絡）</label>
-        <textarea id="up-note" style="min-height:56px" placeholder="發生什麼事？要追蹤什麼？"></textarea>
-      </div>
-    </div>
-
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeUpload()">取消</button>
-      <button class="btn btn-primary" id="up-submit" onclick="submitPhoto()">上傳</button>
-    </div>
+  </div>
+  <div class="form-grid">
+    <div class="form-group"><label>空間位置</label><input type="text" id="e-area" placeholder="例：客廳"></div>
+    <div class="form-group"><label>工種分類</label><input type="text" id="e-tag" list="tag-list" placeholder="例：泥作"></div>
+    <div class="form-group form-full"><label>備註</label><textarea id="e-note" style="min-height:56px"></textarea></div>
+  </div>
+  <datalist id="tag-list">
+    <option value="保護/拆除"><option value="水電"><option value="泥作"><option value="木作">
+    <option value="油漆"><option value="磁磚"><option value="防水"><option value="輕隔間">
+    <option value="鋁窗"><option value="清潔">
+  </datalist>
+  <div class="modal-actions" style="margin-top:1rem">
+    <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-right:auto" onclick="eDelete()">刪除</button>
+    <button class="btn btn-outline" onclick="closeEdit()">關閉</button>
+    <button class="btn btn-primary" onclick="eSave()">儲存</button>
   </div>
 </div>
 
-<!-- 詳情 / 編輯 Lightbox -->
-<div class="lb-overlay" id="lb">
-  <div class="lb-box">
-    <img class="lb-img" id="lb-img" src="" alt="工地照片">
-    <div class="lb-pad">
-      <div id="lb-project" style="font-size:.72rem;color:var(--muted);margin-bottom:.6rem"></div>
-
-      <div class="form-group" style="margin-bottom:.7rem">
-        <label>狀態</label>
-        <div class="seg" id="lb-status">
-          <button type="button" data-v="record" onclick="lbSetStatus('record')">📷 紀錄</button>
-          <button type="button" data-v="issue"  onclick="lbSetStatus('issue')">🔴 問題</button>
-          <button type="button" data-v="fixed"  onclick="lbSetStatus('fixed')">✅ 已修復</button>
-        </div>
-        <div id="lb-fixed-at" style="font-size:.7rem;color:var(--green);margin-top:.35rem"></div>
-      </div>
-
-      <div class="form-grid">
-        <div class="form-group">
-          <label>標籤</label>
-          <input type="text" id="lb-tag" list="tag-list">
-        </div>
-        <div class="form-group">
-          <label>位置</label>
-          <input type="text" id="lb-area">
-        </div>
-        <div class="form-group form-full">
-          <label>說明</label>
-          <textarea id="lb-note" style="min-height:56px"></textarea>
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-right:auto" onclick="lbDelete()">刪除</button>
-        <button class="btn btn-outline" onclick="closeLb()">關閉</button>
-        <button class="btn btn-primary" onclick="lbSave()">儲存</button>
-      </div>
-    </div>
-  </div>
-</div>
+<div class="toast" id="toast"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let upStatus = 'record';
-let upDataUrl = '';
-let lbId = null, lbStatus = 'record';
+const SP_PROJ = {{ selected_project|tojson if selected_project else 'null' }};
+function goProj(v){ location = '{{ url_for("site_photos") }}' + (v ? ('?project_id='+v) : ''); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1600); }
 
-/* ── 上傳 ── */
-function openUpload(){ document.getElementById('up-modal').classList.add('open'); }
-function closeUpload(){
-  document.getElementById('up-modal').classList.remove('open');
-  upDataUrl=''; upStatus='record'; pickStatus('record');
-  document.getElementById('up-file').value='';
-  document.getElementById('up-preview-wrap').style.display='none';
-  document.getElementById('up-tag').value='';
-  document.getElementById('up-area').value='';
-  document.getElementById('up-note').value='';
+let eId=null, eStatus='done';
+function openEdit(id, status, note, tag, area, project){
+  eId=id;
+  document.getElementById('e-img').src='/site-photo/'+id+'/img';
+  document.getElementById('e-proj').textContent = project ? ('📍 '+project) : '未指定案場';
+  document.getElementById('e-note').value=note||'';
+  document.getElementById('e-tag').value=tag||'';
+  document.getElementById('e-area').value=area||'';
+  eSetStatus(status||'unclassified');
+  document.getElementById('sheet-ov').classList.add('open');
+  document.getElementById('sheet').classList.add('open');
 }
-function pickStatus(v){
-  upStatus=v;
-  document.querySelectorAll('#up-status button').forEach(b=>{
-    b.className = (b.dataset.v===v) ? ('on-'+v) : '';
-  });
+function closeEdit(){
+  document.getElementById('sheet-ov').classList.remove('open');
+  document.getElementById('sheet').classList.remove('open');
+  eId=null;
 }
-function onPick(e){
-  const file = e.target.files[0];
-  if(!file) return;
-  const img = new Image();
-  const reader = new FileReader();
-  reader.onload = ev => {
-    img.onload = () => {
-      const max = 1280;
-      let {width:w, height:h} = img;
-      if(w>max || h>max){ const r=Math.min(max/w, max/h); w=Math.round(w*r); h=Math.round(h*r); }
-      const c = document.createElement('canvas');
-      c.width=w; c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);
-      upDataUrl = c.toDataURL('image/jpeg', 0.7);
-      const p = document.getElementById('up-preview');
-      p.src = upDataUrl;
-      document.getElementById('up-preview-wrap').style.display='';
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+function eSetStatus(v){
+  eStatus=v;
+  document.querySelectorAll('#e-status button').forEach(b=>{ b.className = (b.dataset.v===v)?('on-'+v):''; });
 }
-async function submitPhoto(){
-  if(!upDataUrl){ alert('請先選擇或拍一張照片'); return; }
-  const btn = document.getElementById('up-submit');
-  btn.disabled = true; btn.textContent = '上傳中…';
-  try{
-    const r = await fetch('/api/site-photo', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        image_data: upDataUrl, mime:'image/jpeg', status: upStatus,
-        project_id: document.getElementById('up-project').value || null,
-        tag:  document.getElementById('up-tag').value.trim(),
-        area: document.getElementById('up-area').value.trim(),
-        note: document.getElementById('up-note').value.trim()
-      })
-    });
-    if((await r.json()).ok){ location.reload(); }
-    else { alert('上傳失敗，請重試'); btn.disabled=false; btn.textContent='上傳'; }
-  }catch(err){ alert('上傳失敗：'+err); btn.disabled=false; btn.textContent='上傳'; }
-}
-
-/* ── 快速標記已修復 ── */
-async function markFixed(id){
-  const r = await fetch('/api/site-photo/'+id, {
-    method:'PATCH', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({status:'fixed'})
-  });
+async function eSave(){
+  if(!eId) return;
+  const r = await fetch('/api/site-photo/'+eId, {method:'PATCH',headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ status:eStatus,
+      note:document.getElementById('e-note').value.trim(),
+      tag:document.getElementById('e-tag').value.trim(),
+      area:document.getElementById('e-area').value.trim() })});
   if((await r.json()).ok) location.reload();
 }
-
-/* ── 詳情 / 編輯 ── */
-function openDetail(id, status, note, tag, area, project, fixedAt){
-  lbId=id; lbStatus=status;
-  document.getElementById('lb-img').src = '/site-photo/'+id+'/img';
-  document.getElementById('lb-project').textContent = project ? ('📍 '+project) : '未指定案場';
-  document.getElementById('lb-note').value = note||'';
-  document.getElementById('lb-tag').value = tag||'';
-  document.getElementById('lb-area').value = area||'';
-  lbSetStatus(status, true);
-  document.getElementById('lb-fixed-at').textContent =
-    (status==='fixed' && fixedAt) ? ('修復於 '+fixedAt) : '';
-  document.getElementById('lb').classList.add('open');
-}
-function closeLb(){ document.getElementById('lb').classList.remove('open'); lbId=null; }
-function lbSetStatus(v, silent){
-  lbStatus=v;
-  document.querySelectorAll('#lb-status button').forEach(b=>{
-    b.className = (b.dataset.v===v) ? ('on-'+v) : '';
-  });
-  if(!silent && v!=='fixed') document.getElementById('lb-fixed-at').textContent='';
-}
-async function lbSave(){
-  if(!lbId) return;
-  const r = await fetch('/api/site-photo/'+lbId, {
-    method:'PATCH', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      status: lbStatus,
-      note: document.getElementById('lb-note').value.trim(),
-      tag:  document.getElementById('lb-tag').value.trim(),
-      area: document.getElementById('lb-area').value.trim()
-    })
-  });
+async function eDelete(){
+  if(!eId || !confirm('確定刪除這張照片？')) return;
+  const r = await fetch('/api/site-photo/'+eId, {method:'DELETE'});
   if((await r.json()).ok) location.reload();
 }
-async function lbDelete(){
-  if(!lbId || !confirm('確定刪除這張照片？')) return;
-  const r = await fetch('/api/site-photo/'+lbId, {method:'DELETE'});
-  if((await r.json()).ok) location.reload();
-}
-
-document.querySelectorAll('.modal-overlay').forEach(o=>{
-  o.addEventListener('click', e=>{ if(e.target===o) o.classList.remove('open'); });
-});
-document.getElementById('lb').addEventListener('click', e=>{
-  if(e.target.id==='lb') closeLb();
-});
 </script>
 {% endblock %}

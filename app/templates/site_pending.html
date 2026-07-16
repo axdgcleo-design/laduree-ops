@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% block title %}待處理 — 工地照片{% endblock %}
+{% block body %}
+<div class="page sp-page">
+
+  <div class="sp-topbar">
+    <span class="page-title" style="font-size:1.1rem">待處理照片</span>
+    <select class="sp-proj" style="margin-left:auto" onchange="goProj(this.value)">
+      <option value="">全部案場</option>
+      {% for p in projects %}
+      <option value="{{ p.id }}" {% if selected_project == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- 子分頁 -->
+  <div class="sp-chips" style="margin-bottom:1rem">
+    <a class="sp-chip {% if sub=='unclassified' %}on{% endif %}"
+       href="{{ url_for('site_pending', project_id=selected_project, sub='unclassified') }}">未分類（{{ counts.unclassified }}）</a>
+    <a class="sp-chip {% if sub=='discuss' %}on{% endif %}"
+       href="{{ url_for('site_pending', project_id=selected_project, sub='discuss') }}">待討論（{{ counts.discuss }}）</a>
+    <a class="sp-chip {% if sub=='fix' %}on{% endif %}"
+       href="{{ url_for('site_pending', project_id=selected_project, sub='fix') }}">待修改（{{ counts.fix }}）</a>
+  </div>
+
+  {% if photos %}
+    {% for s in photos %}
+    <div class="pend-item" onclick='openClassify({{ s.id }}, {{ s.status|tojson }}, {{ (s.note or "")|tojson }}, {{ (s.tag or "")|tojson }}, {{ (s.area or "")|tojson }})'>
+      <img class="pend-thumb" loading="lazy" src="{{ url_for('site_photo_img', sid=s.id) }}">
+      <div class="pend-main">
+        <div class="pend-cat">
+          {% if s.area or s.tag %}{{ s.area }}{% if s.area and s.tag %} · {% endif %}{{ s.tag }}{% else %}{{ status_labels[s.status] }}{% endif %}
+        </div>
+        <div class="pend-dt">{{ s._dt }}{% if s.project_name %} · {{ s.project_name }}{% endif %}</div>
+      </div>
+      <span style="color:var(--muted)">›</span>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="card" style="margin-top:1rem">
+    <div class="empty"><div class="empty-title">這裡清空了 🎉</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-top:.4rem">沒有{{ status_labels[sub] }}的照片。</div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% set active='pending' %}
+{% include '_site_tabs.html' %}
+
+<!-- 分類 sheet -->
+<div class="sheet-overlay" id="sheet-ov" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-grab"></div>
+  <img class="sheet-img" id="p-img" src="">
+  <div class="form-group" style="margin-bottom:.7rem">
+    <label>分類 / 狀態</label>
+    <div class="seg" id="p-status">
+      <button type="button" data-v="done"    onclick="pSetStatus('done')">✅ 完成分類</button>
+      <button type="button" data-v="fix"     onclick="pSetStatus('fix')">🔴 待修改</button>
+      <button type="button" data-v="discuss" onclick="pSetStatus('discuss')">💬 待討論</button>
+    </div>
+  </div>
+  <div class="form-grid">
+    <div class="form-group"><label>空間位置</label><input type="text" id="p-area" placeholder="例：客廳"></div>
+    <div class="form-group"><label>工種分類</label><input type="text" id="p-tag" list="tag-list" placeholder="例：泥作"></div>
+    <div class="form-group form-full"><label>備註</label><textarea id="p-note" style="min-height:56px"></textarea></div>
+  </div>
+  <datalist id="tag-list">
+    <option value="保護/拆除"><option value="水電"><option value="泥作"><option value="木作">
+    <option value="油漆"><option value="磁磚"><option value="防水"><option value="輕隔間">
+    <option value="鋁窗"><option value="清潔">
+  </datalist>
+  <div class="modal-actions" style="margin-top:1rem">
+    <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-right:auto" onclick="pDelete()">刪除</button>
+    <button class="btn btn-outline" onclick="closeSheet()">關閉</button>
+    <button class="btn btn-primary" onclick="pSave()">儲存</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function goProj(v){ location = '{{ url_for("site_pending") }}?sub={{ sub }}' + (v ? ('&project_id='+v) : ''); }
+
+let pId=null, pStatus='done';
+function openClassify(id, status, note, tag, area){
+  pId=id; pSetStatus('done');
+  document.getElementById('p-img').src='/site-photo/'+id+'/img';
+  document.getElementById('p-note').value=note||'';
+  document.getElementById('p-tag').value=tag||'';
+  document.getElementById('p-area').value=area||'';
+  document.getElementById('sheet-ov').classList.add('open');
+  document.getElementById('sheet').classList.add('open');
+}
+function closeSheet(){
+  document.getElementById('sheet-ov').classList.remove('open');
+  document.getElementById('sheet').classList.remove('open');
+  pId=null;
+}
+function pSetStatus(v){ pStatus=v; document.querySelectorAll('#p-status button').forEach(b=>{ b.className=(b.dataset.v===v)?('on-'+v):''; }); }
+async function pSave(){
+  if(!pId) return;
+  const r = await fetch('/api/site-photo/'+pId, {method:'PATCH',headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ status:pStatus,
+      note:document.getElementById('p-note').value.trim(),
+      tag:document.getElementById('p-tag').value.trim(),
+      area:document.getElementById('p-area').value.trim() })});
+  if((await r.json()).ok) location.reload();
+}
+async function pDelete(){
+  if(!pId || !confirm('確定刪除這張照片？')) return;
+  const r = await fetch('/api/site-photo/'+pId, {method:'DELETE'});
+  if((await r.json()).ok) location.reload();
+}
+</script>
+{% endblock %}

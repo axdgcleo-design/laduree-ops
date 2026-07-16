@@ -1,0 +1,15 @@
+<div class="site-tabs">
+  <a href="{{ url_for('site_photos', project_id=selected_project) }}"
+     class="stab {% if active=='gallery' %}on{% endif %}">
+    <span class="stab-ico">🖼️</span><span>照片集</span>
+  </a>
+  <a href="{{ url_for('site_camera', project_id=selected_project) }}"
+     class="stab {% if active=='camera' %}on{% endif %}">
+    <span class="stab-ico">📷</span><span>拍照</span>
+  </a>
+  <a href="{{ url_for('site_pending', project_id=selected_project) }}"
+     class="stab {% if active=='pending' %}on{% endif %}">
+    <span class="stab-ico">✅</span><span>待處理</span>
+    {% if pending %}<span class="stab-badge">{{ pending }}</span>{% endif %}
+  </a>
+</div>
