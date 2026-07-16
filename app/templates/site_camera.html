@@ -1,5 +1,16 @@
 {% extends 'base.html' %}
 {% block title %}拍照 — 工地照片{% endblock %}
+{% block head %}
+<style>
+  .cam-video { width:100%; max-width:380px; aspect-ratio:3/4; border-radius:12px;
+    background:#111; object-fit:cover; border:1px solid var(--line); }
+  .cam-count { font-size:.78rem; color:var(--green); min-height:1.2em; }
+  .cam-flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none;
+    z-index:150; transition:opacity .08s; }
+  .cam-flash.on { opacity:.85; transition:none; }
+  .cam-fallback { display:none; flex-direction:column; align-items:center; gap:.6rem; }
+</style>
+{% endblock %}
 {% block body %}
 <div class="page sp-page">
 
@@ -20,17 +31,32 @@
   </div>
 
   <div class="cam-stage">
-    <img class="cam-preview" id="cam-preview" style="display:none">
+    <!-- 即時相機 -->
+    <video class="cam-video" id="cam-video" playsinline autoplay muted style="display:none"></video>
+
+    <!-- 啟動中 / 提示 -->
     <div class="cam-placeholder" id="cam-ph">
-      點下方快門拍照<br>
-      <span style="font-size:.78rem;opacity:.7">「待處理」開著 → 先拍不分類，直接進待處理佇列</span>
+      正在啟動相機…<br>
+      <span style="font-size:.78rem;opacity:.7">「待處理」開著 → 連續拍、不分類，直接進待處理</span>
     </div>
 
-    <input type="file" id="cam-file" accept="image/*" capture="environment" style="display:none" onchange="onShot(event)">
-    <button class="cam-shutter" id="shutter" onclick="document.getElementById('cam-file').click()"></button>
-    <div style="font-size:.75rem;color:var(--muted)">按快門開相機 · 拍完自動壓縮上傳</div>
+    <!-- 相機無法使用時的備援：叫原生相機 -->
+    <div class="cam-fallback" id="cam-fallback">
+      <div class="cam-placeholder" style="max-width:380px">
+        無法開啟即時相機<br>
+        <span style="font-size:.78rem;opacity:.7">改用手機相機，一次一張</span>
+      </div>
+      <input type="file" id="cam-file" accept="image/*" capture="environment" style="display:none" onchange="onFilePick(event)">
+      <button class="btn btn-primary" onclick="document.getElementById('cam-file').click()">開啟相機拍一張</button>
+    </div>
+
+    <div class="cam-count" id="cam-count"></div>
+    <button class="cam-shutter" id="shutter" onclick="capture()" disabled></button>
+    <div style="font-size:.75rem;color:var(--muted)" id="cam-hint">連續按快門即可連拍 · 自動壓縮上傳</div>
   </div>
 </div>
+<canvas id="cam-canvas" style="display:none"></canvas>
+<div class="cam-flash" id="flash"></div>
 
 {% set active='camera' %}
 {% include '_site_tabs.html' %}
@@ -70,49 +96,77 @@
 {% block scripts %}
 <script>
 function goProj(v){ location = '{{ url_for("site_camera") }}' + (v ? ('?project_id='+v) : ''); }
-function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1600); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1500); }
 function projId(){ return document.getElementById('cam-proj').value || null; }
 
-let shotUrl='', cStatus='done';
+const video  = document.getElementById('cam-video');
+const canvas = document.getElementById('cam-canvas');
+let stream = null, savedCount = 0, cStatus = 'done', shotUrl = '';
 
-function compress(file){
-  return new Promise(res=>{
-    const img=new Image(), reader=new FileReader();
-    reader.onload=ev=>{ img.onload=()=>{
-      const max=1280; let {width:w,height:h}=img;
-      if(w>max||h>max){ const r=Math.min(max/w,max/h); w=Math.round(w*r); h=Math.round(h*r); }
-      const c=document.createElement('canvas'); c.width=w; c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);
-      res(c.toDataURL('image/jpeg',0.7));
-    }; img.src=ev.target.result; };
-    reader.readAsDataURL(file);
-  });
+/* ── 啟動即時相機 ── */
+async function startCamera(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ showFallback(); return; }
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:{ ideal:'environment' } }, audio:false });
+    video.srcObject = stream;
+    await video.play().catch(()=>{});
+    document.getElementById('cam-ph').style.display='none';
+    video.style.display='';
+    document.getElementById('shutter').disabled = false;
+  }catch(e){ showFallback(); }
+}
+function showFallback(){
+  document.getElementById('cam-ph').style.display='none';
+  video.style.display='none';
+  document.getElementById('cam-fallback').style.display='flex';
+  document.getElementById('shutter').style.display='none';
+  document.getElementById('cam-hint').textContent='此瀏覽器不支援即時連拍，改用單張相機';
+}
+function flash(){ const f=document.getElementById('flash'); f.classList.add('on');
+  setTimeout(()=>f.classList.remove('on'),90); }
+
+/* ── 從影像串流擷取一格 ── */
+function grabFrame(){
+  const max=1280;
+  let w=video.videoWidth, h=video.videoHeight;
+  if(!w||!h) return null;
+  if(w>max||h>max){ const r=Math.min(max/w,max/h); w=Math.round(w*r); h=Math.round(h*r); }
+  canvas.width=w; canvas.height=h;
+  canvas.getContext('2d').drawImage(video,0,0,w,h);
+  return canvas.toDataURL('image/jpeg',0.7);
 }
 
-async function onShot(e){
-  const file=e.target.files[0]; if(!file) return;
-  shotUrl = await compress(file);
-  e.target.value='';
-  document.getElementById('cam-preview').src=shotUrl;
-  document.getElementById('cam-preview').style.display='';
-  document.getElementById('cam-ph').style.display='none';
-
+/* ── 按快門 ── */
+function capture(){
+  const url = grabFrame();
+  if(!url){ toast('相機尚未就緒'); return; }
+  flash();
   if(document.getElementById('pend-toggle').checked){
-    // 先拍不分類 → 直接進待處理
-    await upload({status:'unclassified'});
-    toast('已存入待處理 ✅');
+    // 連拍：立即擷取、背景上傳、快門馬上可再按
+    uploadBg(url);
   } else {
-    openClassify();
+    // 立即分類：定格這張，開 sheet
+    shotUrl = url; openClassify();
   }
 }
 
-async function upload(extra){
-  const body = Object.assign({ image_data:shotUrl, mime:'image/jpeg', project_id:projId() }, extra||{});
+/* 背景上傳（連拍不卡） */
+async function uploadBg(url){
+  try{
+    const ok = await postPhoto({ image_data:url, status:'unclassified' });
+    if(ok){ savedCount++; document.getElementById('cam-count').textContent = '📸 本次已存 '+savedCount+' 張（待處理）'; }
+    else toast('上傳失敗');
+  }catch(e){ toast('上傳失敗'); }
+}
+
+async function postPhoto(extra){
+  const body = Object.assign({ mime:'image/jpeg', project_id:projId() }, extra);
   const r = await fetch('/api/site-photo', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   return (await r.json()).ok;
 }
 
-/* 立即分類（toggle 關） */
+/* ── 立即分類 sheet（toggle 關） ── */
 function openClassify(){
   cStatus='done'; cSetStatus('done');
   document.getElementById('c-img').src=shotUrl;
@@ -126,21 +180,37 @@ function closeSheet(){
   document.getElementById('sheet-ov').classList.remove('open');
   document.getElementById('sheet').classList.remove('open');
 }
-function cancelClassify(){ closeSheet(); resetPreview(); }
-function resetPreview(){
-  document.getElementById('cam-preview').style.display='none';
-  document.getElementById('cam-ph').style.display='';
-}
+function cancelClassify(){ closeSheet(); }
 function cSetStatus(v){ cStatus=v; document.querySelectorAll('#c-status button').forEach(b=>{ b.className=(b.dataset.v===v)?('on-'+v):''; }); }
 async function saveClassify(){
   const btn=document.getElementById('c-save'); btn.disabled=true; btn.textContent='儲存中…';
-  const ok = await upload({ status:cStatus,
+  const ok = await postPhoto({ image_data:shotUrl, status:cStatus,
     area:document.getElementById('c-area').value.trim(),
     tag:document.getElementById('c-tag').value.trim(),
     note:document.getElementById('c-note').value.trim() });
   btn.disabled=false; btn.textContent='儲存';
-  if(ok){ closeSheet(); resetPreview(); toast('已儲存 ✅'); }
+  if(ok){ closeSheet(); savedCount++; document.getElementById('cam-count').textContent='📸 本次已存 '+savedCount+' 張'; toast('已儲存 ✅'); }
   else toast('儲存失敗，請重試');
 }
+
+/* ── 備援：原生相機單張 ── */
+async function onFilePick(e){
+  const file=e.target.files[0]; if(!file) return;
+  const url = await new Promise(res=>{
+    const img=new Image(), rd=new FileReader();
+    rd.onload=ev=>{ img.onload=()=>{ const max=1280; let w=img.width,h=img.height;
+      if(w>max||h>max){ const r=Math.min(max/w,max/h); w=Math.round(w*r); h=Math.round(h*r); }
+      const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h);
+      res(c.toDataURL('image/jpeg',0.7)); }; img.src=ev.target.result; };
+    rd.readAsDataURL(file);
+  });
+  e.target.value='';
+  if(document.getElementById('pend-toggle').checked){ uploadBg(url); toast('已存入待處理 ✅'); }
+  else { shotUrl=url; openClassify(); }
+}
+
+/* 離開頁面時關閉相機 */
+window.addEventListener('pagehide', ()=>{ if(stream) stream.getTracks().forEach(t=>t.stop()); });
+startCamera();
 </script>
 {% endblock %}
