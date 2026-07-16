@@ -600,35 +600,100 @@ def api_task_delete(tid):
     return jsonify({'ok':True})
 
 # ── 工地照片 Site Photos ──────────────────────────────────────────────
-SITE_STATUSES = ('record','issue','fixed')
+# 工作流狀態：未分類 → (待討論 / 待修改) → 已分類歸檔
+SITE_STATUSES = ('unclassified','discuss','fix','done')
+PENDING_STATUSES = ('unclassified','discuss','fix')   # 進「待處理」佇列的狀態
+STATUS_LABELS = {'unclassified':'未分類','discuss':'待討論','fix':'待修改','done':'已分類'}
 
+def _norm_dt(v):
+    """把 created_at（SQLite 字串 / PG datetime）統一成字串。"""
+    return str(v) if v is not None else ''
+
+def _pending_count(pid):
+    ph = _ph()
+    q = ("SELECT COUNT(*) as c FROM site_photos WHERE status IN "
+         "('unclassified','discuss','fix')")
+    params = []
+    if pid: q += f" AND project_id={ph}"; params.append(pid)
+    row = fetchone(q, params)
+    return row['c'] if row else 0
+
+def _site_photo_cols():
+    return ("SELECT s.id,s.project_id,s.mime,s.note,s.tag,s.area,s.status,"
+            "s.fixed_at,s.created_at,p.name as project_name "
+            "FROM site_photos s LEFT JOIN projects p ON s.project_id=p.id WHERE 1=1")
+
+# 照片集：依日期分組，可依空間/工項篩選、搜尋
 @app.route('/site-photos')
 def site_photos():
     ph = _ph()
-    pid = request.args.get('project_id')
-    st  = request.args.get('status','all')
+    pid  = request.args.get('project_id')
+    area = request.args.get('area','')
+    tag  = request.args.get('tag','')
+    q    = request.args.get('q','').strip()
     projects = fetchall("SELECT * FROM projects ORDER BY name")
-    # 不撈 image_data，避免看板載入大量 base64；圖片走 /site-photo/<id>/img
-    sql = ("SELECT s.id,s.project_id,s.mime,s.note,s.tag,s.area,s.status,"
-           "s.fixed_at,s.created_at,p.name as project_name "
-           "FROM site_photos s LEFT JOIN projects p ON s.project_id=p.id WHERE 1=1")
-    params = []
-    if pid: sql += f" AND s.project_id={ph}"; params.append(pid)
-    if st != 'all': sql += f" AND s.status={ph}"; params.append(st)
+    sql = _site_photo_cols(); params = []
+    if pid:  sql += f" AND s.project_id={ph}"; params.append(pid)
+    if area: sql += f" AND s.area={ph}";       params.append(area)
+    if tag:  sql += f" AND s.tag={ph}";        params.append(tag)
+    if q:
+        like = f"%{q}%"
+        sql += f" AND (s.note LIKE {ph} OR s.area LIKE {ph} OR s.tag LIKE {ph})"
+        params += [like, like, like]
     sql += " ORDER BY s.created_at DESC"
     photos = fetchall(sql, params)
-    # 狀態統計（尊重案場篩選）
-    csql = "SELECT status, COUNT(*) as c FROM site_photos WHERE 1=1"
+    # 依日期分組
+    groups = []
+    cur_day, bucket = None, None
+    for p in photos:
+        ca = _norm_dt(p['created_at'])
+        p['_day'], p['_time'] = ca[:10], ca[11:16]
+        if p['_day'] != cur_day:
+            cur_day = p['_day']; bucket = {'day': cur_day, 'rows': []}; groups.append(bucket)
+        bucket['rows'].append(p)
+    # 篩選用的空間/工項清單（尊重案場）
+    fsql = "SELECT DISTINCT area, tag FROM site_photos WHERE 1=1"; fparams = []
+    if pid: fsql += f" AND project_id={ph}"; fparams.append(pid)
+    frows = fetchall(fsql, fparams)
+    areas = sorted({r['area'] for r in frows if r['area']})
+    tags  = sorted({r['tag']  for r in frows if r['tag']})
+    return render_template('site_photos.html', groups=groups, projects=projects,
+                           selected_project=pid, sel_area=area, sel_tag=tag, q=q,
+                           areas=areas, tags=tags, pending=_pending_count(pid),
+                           status_labels=STATUS_LABELS, fmt=fmt)
+
+# 拍照：先拍不分類，直接進待處理
+@app.route('/site-photos/camera')
+def site_camera():
+    pid = request.args.get('project_id')
+    projects = fetchall("SELECT * FROM projects ORDER BY name")
+    return render_template('site_camera.html', projects=projects,
+                           selected_project=pid, pending=_pending_count(pid))
+
+# 待處理：未分類 / 待討論 / 待修改
+@app.route('/site-photos/pending')
+def site_pending():
+    ph = _ph()
+    pid = request.args.get('project_id')
+    sub = request.args.get('sub','unclassified')
+    if sub not in PENDING_STATUSES: sub = 'unclassified'
+    projects = fetchall("SELECT * FROM projects ORDER BY name")
+    sql = _site_photo_cols() + f" AND s.status={ph}"; params = [sub]
+    if pid: sql += f" AND s.project_id={ph}"; params.append(pid)
+    sql += " ORDER BY s.created_at DESC"
+    photos = fetchall(sql, params)
+    for p in photos: p['_dt'] = _norm_dt(p['created_at'])[:16]
+    # 各子狀態計數
+    csql = "SELECT status, COUNT(*) as c FROM site_photos WHERE status IN ('unclassified','discuss','fix')"
     cparams = []
     if pid: csql += f" AND project_id={ph}"; cparams.append(pid)
     csql += " GROUP BY status"
-    crows = fetchall(csql, cparams)
-    counts = {'record':0,'issue':0,'fixed':0}
-    for r in crows: counts[r['status']] = r['c']
-    counts['all'] = counts['record'] + counts['issue'] + counts['fixed']
-    return render_template('site_photos.html', photos=photos, projects=projects,
-                           counts=counts, selected_project=pid,
-                           selected_status=st, fmt=fmt)
+    counts = {'unclassified':0,'discuss':0,'fix':0}
+    for r in fetchall(csql, cparams): counts[r['status']] = r['c']
+    return render_template('site_pending.html', photos=photos, projects=projects,
+                           selected_project=pid, sub=sub, counts=counts,
+                           pending=counts['unclassified']+counts['discuss']+counts['fix'],
+                           status_labels=STATUS_LABELS, fmt=fmt)
 
 @app.route('/api/site-photo', methods=['POST'])
 def api_site_photo_add():
@@ -638,8 +703,8 @@ def api_site_photo_add():
         img = img.split(',',1)[1]
     if not img:
         return jsonify({'ok':False,'error':'no image'}), 400
-    status = d.get('status','record')
-    if status not in SITE_STATUSES: status = 'record'
+    status = d.get('status','unclassified')
+    if status not in SITE_STATUSES: status = 'unclassified'
     execute(f"""INSERT INTO site_photos
         (project_id,image_data,mime,note,tag,area,status)
         VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
@@ -655,11 +720,8 @@ def api_site_photo_update(sid):
     for k in ('note','tag','area','project_id'):
         if k in d: fields.append(f"{k}={ph}"); vals.append(d[k])
     if 'status' in d:
-        st = d['status'] if d['status'] in SITE_STATUSES else 'record'
+        st = d['status'] if d['status'] in SITE_STATUSES else 'unclassified'
         fields.append(f"status={ph}"); vals.append(st)
-        # 標記已修復 → 記下修復日期（回答「什麼時候修好」）；轉回其他狀態則清空
-        fields.append(f"fixed_at={ph}")
-        vals.append(date.today().isoformat() if st == 'fixed' else '')
     if not fields: return jsonify({'ok':False})
     vals.append(sid)
     execute(f"UPDATE site_photos SET {','.join(fields)} WHERE id={ph}", vals)

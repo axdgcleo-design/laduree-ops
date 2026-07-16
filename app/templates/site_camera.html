@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+{% block title %}拍照 — 工地照片{% endblock %}
+{% block body %}
+<div class="page sp-page">
+
+  <div class="sp-topbar">
+    <select class="sp-proj" id="cam-proj" onchange="goProj(this.value)">
+      <option value="">全部案場</option>
+      {% for p in projects %}
+      <option value="{{ p.id }}" {% if selected_project == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+    <label class="cam-toggle" style="margin-left:auto">
+      <span>待處理</span>
+      <span class="switch">
+        <input type="checkbox" id="pend-toggle" checked>
+        <span class="track"></span><span class="knob"></span>
+      </span>
+    </label>
+  </div>
+
+  <div class="cam-stage">
+    <img class="cam-preview" id="cam-preview" style="display:none">
+    <div class="cam-placeholder" id="cam-ph">
+      點下方快門拍照<br>
+      <span style="font-size:.78rem;opacity:.7">「待處理」開著 → 先拍不分類，直接進待處理佇列</span>
+    </div>
+
+    <input type="file" id="cam-file" accept="image/*" capture="environment" style="display:none" onchange="onShot(event)">
+    <button class="cam-shutter" id="shutter" onclick="document.getElementById('cam-file').click()"></button>
+    <div style="font-size:.75rem;color:var(--muted)">按快門開相機 · 拍完自動壓縮上傳</div>
+  </div>
+</div>
+
+{% set active='camera' %}
+{% include '_site_tabs.html' %}
+
+<!-- 拍完立即分類 sheet（待處理關閉時使用） -->
+<div class="sheet-overlay" id="sheet-ov" onclick="cancelClassify()"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-grab"></div>
+  <img class="sheet-img" id="c-img" src="">
+  <div class="form-group" style="margin-bottom:.7rem">
+    <label>這張是？</label>
+    <div class="seg" id="c-status">
+      <button type="button" data-v="done"    class="on-done" onclick="cSetStatus('done')">✅ 一般紀錄</button>
+      <button type="button" data-v="fix"     onclick="cSetStatus('fix')">🔴 待修改</button>
+      <button type="button" data-v="discuss" onclick="cSetStatus('discuss')">💬 待討論</button>
+    </div>
+  </div>
+  <div class="form-grid">
+    <div class="form-group"><label>空間位置</label><input type="text" id="c-area" placeholder="例：客廳"></div>
+    <div class="form-group"><label>工種分類</label><input type="text" id="c-tag" list="tag-list" placeholder="例：泥作"></div>
+    <div class="form-group form-full"><label>備註</label><textarea id="c-note" style="min-height:56px"></textarea></div>
+  </div>
+  <datalist id="tag-list">
+    <option value="保護/拆除"><option value="水電"><option value="泥作"><option value="木作">
+    <option value="油漆"><option value="磁磚"><option value="防水"><option value="輕隔間">
+    <option value="鋁窗"><option value="清潔">
+  </datalist>
+  <div class="modal-actions" style="margin-top:1rem">
+    <button class="btn btn-outline" onclick="cancelClassify()">取消</button>
+    <button class="btn btn-primary" id="c-save" onclick="saveClassify()">儲存</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function goProj(v){ location = '{{ url_for("site_camera") }}' + (v ? ('?project_id='+v) : ''); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1600); }
+function projId(){ return document.getElementById('cam-proj').value || null; }
+
+let shotUrl='', cStatus='done';
+
+function compress(file){
+  return new Promise(res=>{
+    const img=new Image(), reader=new FileReader();
+    reader.onload=ev=>{ img.onload=()=>{
+      const max=1280; let {width:w,height:h}=img;
+      if(w>max||h>max){ const r=Math.min(max/w,max/h); w=Math.round(w*r); h=Math.round(h*r); }
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      res(c.toDataURL('image/jpeg',0.7));
+    }; img.src=ev.target.result; };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function onShot(e){
+  const file=e.target.files[0]; if(!file) return;
+  shotUrl = await compress(file);
+  e.target.value='';
+  document.getElementById('cam-preview').src=shotUrl;
+  document.getElementById('cam-preview').style.display='';
+  document.getElementById('cam-ph').style.display='none';
+
+  if(document.getElementById('pend-toggle').checked){
+    // 先拍不分類 → 直接進待處理
+    await upload({status:'unclassified'});
+    toast('已存入待處理 ✅');
+  } else {
+    openClassify();
+  }
+}
+
+async function upload(extra){
+  const body = Object.assign({ image_data:shotUrl, mime:'image/jpeg', project_id:projId() }, extra||{});
+  const r = await fetch('/api/site-photo', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  return (await r.json()).ok;
+}
+
+/* 立即分類（toggle 關） */
+function openClassify(){
+  cStatus='done'; cSetStatus('done');
+  document.getElementById('c-img').src=shotUrl;
+  document.getElementById('c-area').value='';
+  document.getElementById('c-tag').value='';
+  document.getElementById('c-note').value='';
+  document.getElementById('sheet-ov').classList.add('open');
+  document.getElementById('sheet').classList.add('open');
+}
+function closeSheet(){
+  document.getElementById('sheet-ov').classList.remove('open');
+  document.getElementById('sheet').classList.remove('open');
+}
+function cancelClassify(){ closeSheet(); resetPreview(); }
+function resetPreview(){
+  document.getElementById('cam-preview').style.display='none';
+  document.getElementById('cam-ph').style.display='';
+}
+function cSetStatus(v){ cStatus=v; document.querySelectorAll('#c-status button').forEach(b=>{ b.className=(b.dataset.v===v)?('on-'+v):''; }); }
+async function saveClassify(){
+  const btn=document.getElementById('c-save'); btn.disabled=true; btn.textContent='儲存中…';
+  const ok = await upload({ status:cStatus,
+    area:document.getElementById('c-area').value.trim(),
+    tag:document.getElementById('c-tag').value.trim(),
+    note:document.getElementById('c-note').value.trim() });
+  btn.disabled=false; btn.textContent='儲存';
+  if(ok){ closeSheet(); resetPreview(); toast('已儲存 ✅'); }
+  else toast('儲存失敗，請重試');
+}
+</script>
+{% endblock %}
