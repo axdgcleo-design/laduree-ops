@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}待處理 — 工地照片{% endblock %}
+{% block head %}<script src="{{ url_for('static', filename='js/sitephoto.js') }}"></script>{% endblock %}
 {% block body %}
 <div class="page sp-page">
 
@@ -62,15 +63,11 @@
     </div>
   </div>
   <div class="form-grid">
-    <div class="form-group"><label>空間位置</label><input type="text" id="p-area" placeholder="例：客廳"></div>
-    <div class="form-group"><label>工種分類</label><input type="text" id="p-tag" list="tag-list" placeholder="例：泥作"></div>
+    <div class="form-group"><label>空間位置</label><input type="text" id="p-area" list="area-list" placeholder="例：客廳"></div>
+    <div class="form-group form-full"><label>工種分類（可複選）</label><div class="tp" id="p-tagpick"></div></div>
     <div class="form-group form-full"><label>備註</label><textarea id="p-note" style="min-height:56px"></textarea></div>
   </div>
-  <datalist id="tag-list">
-    <option value="保護/拆除"><option value="水電"><option value="泥作"><option value="木作">
-    <option value="油漆"><option value="磁磚"><option value="防水"><option value="輕隔間">
-    <option value="鋁窗"><option value="清潔">
-  </datalist>
+  <datalist id="area-list">{% for a in areas %}<option value="{{ a }}">{% endfor %}</datalist>
   <div class="modal-actions" style="margin-top:1rem">
     <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-right:auto" onclick="pDelete()">刪除</button>
     <button class="btn btn-outline" onclick="closeSheet()">關閉</button>
@@ -83,12 +80,14 @@
 <script>
 function goProj(v){ location = '{{ url_for("site_pending") }}?sub={{ sub }}' + (v ? ('&project_id='+v) : ''); }
 
+const PRESET_TAGS = {{ tags|tojson }};
+const pTag = TagPick('p-tagpick', PRESET_TAGS, '');
 let pId=null, pStatus='done';
 function openClassify(id, status, note, tag, area){
   pId=id; pSetStatus('done');
   document.getElementById('p-img').src='/site-photo/'+id+'/img';
   document.getElementById('p-note').value=note||'';
-  document.getElementById('p-tag').value=tag||'';
+  pTag.reset(tag||'');
   document.getElementById('p-area').value=area||'';
   document.getElementById('sheet-ov').classList.add('open');
   document.getElementById('sheet').classList.add('open');
@@ -104,7 +103,7 @@ async function pSave(){
   const r = await fetch('/api/site-photo/'+pId, {method:'PATCH',headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ status:pStatus,
       note:document.getElementById('p-note').value.trim(),
-      tag:document.getElementById('p-tag').value.trim(),
+      tag:pTag.value(),
       area:document.getElementById('p-area').value.trim() })});
   if((await r.json()).ok) location.reload();
 }

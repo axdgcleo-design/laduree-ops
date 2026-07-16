@@ -380,3 +380,15 @@ nav a.nav-link.active { color: var(--cream); border-bottom-color: var(--red); }
   background:var(--ink); color:var(--cream); padding:.55rem 1rem; border-radius:20px; font-size:.8rem;
   opacity:0; pointer-events:none; transition:.25s; z-index:300; white-space:nowrap; }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ── 多標籤快選 + 我的最愛 ── */
+.tp { display:flex; flex-wrap:wrap; gap:.35rem; }
+.tp-chip { font-size:.75rem; padding:.3rem .65rem; border:1px solid var(--line); background:var(--white);
+  border-radius:16px; cursor:pointer; color:var(--mid); }
+.tp-chip.on { background:var(--ink); color:var(--cream); border-color:var(--ink); }
+.tp-add { font-size:.72rem; padding:.3rem .6rem; border:1px dashed var(--line); background:transparent;
+  border-radius:16px; cursor:pointer; color:var(--muted); }
+.sp-star { position:absolute; top:.4rem; left:.4rem; width:24px; height:24px; border:none; border-radius:50%;
+  background:rgba(0,0,0,.35); color:#fff; font-size:.85rem; cursor:pointer; line-height:24px; padding:0; }
+.sp-star.on { color:#ffd23f; }
+.sp-storage { font-size:.68rem; color:var(--muted); }

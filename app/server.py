@@ -247,6 +247,7 @@ def init_db():
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS parent_id INTEGER;
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS issue_found TEXT DEFAULT '';
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS issue_resolved TEXT DEFAULT '';
+        ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS favorite INTEGER DEFAULT 0;
         CREATE TABLE IF NOT EXISTS company_info (
             id INTEGER PRIMARY KEY DEFAULT 1,
             name TEXT DEFAULT '漣一設計有限公司',
@@ -383,7 +384,8 @@ def init_db():
         cols = {r[1] for r in conn.execute("PRAGMA table_info(site_photos)")}
         for c, ddl in (('parent_id','INTEGER'),
                        ('issue_found',"TEXT DEFAULT ''"),
-                       ('issue_resolved',"TEXT DEFAULT ''")):
+                       ('issue_resolved',"TEXT DEFAULT ''"),
+                       ('favorite','INTEGER DEFAULT 0')):
             if c not in cols:
                 conn.execute(f"ALTER TABLE site_photos ADD COLUMN {c} {ddl}")
         conn.commit(); conn.close()
@@ -630,10 +632,38 @@ def _pending_count(pid):
 
 def _site_photo_cols():
     return ("SELECT s.id,s.project_id,s.mime,s.note,s.tag,s.area,s.status,"
-            "s.fixed_at,s.issue_resolved,s.created_at,p.name as project_name "
+            "s.fixed_at,s.issue_resolved,s.favorite,s.created_at,p.name as project_name "
             "FROM site_photos s LEFT JOIN projects p ON s.project_id=p.id WHERE 1=1")
 
-# 照片集：依日期分組，可依空間/工項篩選、搜尋
+DEFAULT_TAGS = ['保護/拆除','水電','泥作','木作','油漆','磁磚','防水','輕隔間','鋁窗','清潔']
+
+def _split_tags(v):
+    return [t.strip() for t in (v or '').split(',') if t.strip()]
+
+def _suggest(pid):
+    """回傳該案場（或全部）用過的空間、工項清單，供下拉/快選建議。"""
+    ph = _ph()
+    sql = "SELECT DISTINCT area, tag FROM site_photos WHERE 1=1"; params = []
+    if pid: sql += f" AND project_id={ph}"; params.append(pid)
+    rows = fetchall(sql, params)
+    areas = sorted({r['area'] for r in rows if r['area']})
+    used = set()
+    for r in rows:
+        for t in _split_tags(r['tag']): used.add(t)
+    used_tags = sorted(used)
+    tags = list(dict.fromkeys(DEFAULT_TAGS + used_tags))   # 預設在前、用過的補後（給快選）
+    return areas, tags, used_tags
+
+def _storage(pid):
+    ph = _ph()
+    sql = "SELECT COUNT(*) as c, COALESCE(SUM(LENGTH(image_data)),0) as b FROM site_photos WHERE 1=1"
+    params = []
+    if pid: sql += f" AND project_id={ph}"; params.append(pid)
+    row = fetchone(sql, params) or {'c':0,'b':0}
+    mb = round((row['b'] or 0) / 1048576, 1)
+    return {'count': row['c'] or 0, 'mb': mb}
+
+# 照片集：依日期分組，可依空間/工項篩選、搜尋、我的最愛
 @app.route('/site-photos')
 def site_photos():
     ph = _ph()
@@ -641,35 +671,37 @@ def site_photos():
     area = request.args.get('area','')
     tag  = request.args.get('tag','')
     q    = request.args.get('q','').strip()
+    fav  = request.args.get('fav','')
     projects = fetchall("SELECT * FROM projects ORDER BY name")
     sql = _site_photo_cols() + " AND s.parent_id IS NULL"; params = []
     if pid:  sql += f" AND s.project_id={ph}"; params.append(pid)
     if area: sql += f" AND s.area={ph}";       params.append(area)
-    if tag:  sql += f" AND s.tag={ph}";        params.append(tag)
+    if tag:  # 工項為逗號分隔多標籤，做 token 比對
+        sql += f" AND (s.tag={ph} OR s.tag LIKE {ph} OR s.tag LIKE {ph} OR s.tag LIKE {ph})"
+        params += [tag, f"{tag},%", f"%,{tag}", f"%,{tag},%"]
+    if fav:  sql += " AND s.favorite=1"
     if q:
         like = f"%{q}%"
         sql += f" AND (s.note LIKE {ph} OR s.area LIKE {ph} OR s.tag LIKE {ph})"
         params += [like, like, like]
     sql += " ORDER BY s.created_at DESC"
     photos = fetchall(sql, params)
-    # 依日期分組
+    # 依日期分組 + 拆解多標籤
     groups = []
     cur_day, bucket = None, None
     for p in photos:
         ca = _norm_dt(p['created_at'])
         p['_day'], p['_time'] = ca[:10], ca[11:16]
+        p['_tags'] = _split_tags(p['tag'])
         if p['_day'] != cur_day:
             cur_day = p['_day']; bucket = {'day': cur_day, 'rows': []}; groups.append(bucket)
         bucket['rows'].append(p)
-    # 篩選用的空間/工項清單（尊重案場）
-    fsql = "SELECT DISTINCT area, tag FROM site_photos WHERE 1=1"; fparams = []
-    if pid: fsql += f" AND project_id={ph}"; fparams.append(pid)
-    frows = fetchall(fsql, fparams)
-    areas = sorted({r['area'] for r in frows if r['area']})
-    tags  = sorted({r['tag']  for r in frows if r['tag']})
+    # 篩選列只顯示「實際用過」的工項；快選用預設+用過
+    areas, all_tags, used_tags = _suggest(pid)
     return render_template('site_photos.html', groups=groups, projects=projects,
-                           selected_project=pid, sel_area=area, sel_tag=tag, q=q,
-                           areas=areas, tags=tags, pending=_pending_count(pid),
+                           selected_project=pid, sel_area=area, sel_tag=tag, q=q, fav=fav,
+                           areas=areas, tags=all_tags, filter_tags=used_tags,
+                           pending=_pending_count(pid), storage=_storage(pid),
                            status_labels=STATUS_LABELS, fmt=fmt)
 
 # 拍照：先拍不分類，直接進待處理
@@ -677,8 +709,9 @@ def site_photos():
 def site_camera():
     pid = request.args.get('project_id')
     projects = fetchall("SELECT * FROM projects ORDER BY name")
-    return render_template('site_camera.html', projects=projects,
-                           selected_project=pid, pending=_pending_count(pid))
+    areas, all_tags, _ = _suggest(pid)
+    return render_template('site_camera.html', projects=projects, selected_project=pid,
+                           pending=_pending_count(pid), areas=areas, tags=all_tags)
 
 # 待處理：未分類 / 待討論 / 待修改
 @app.route('/site-photos/pending')
@@ -700,9 +733,11 @@ def site_pending():
     csql += " GROUP BY status"
     counts = {'unclassified':0,'discuss':0,'fix':0}
     for r in fetchall(csql, cparams): counts[r['status']] = r['c']
+    areas, all_tags, _ = _suggest(pid)
     return render_template('site_pending.html', photos=photos, projects=projects,
                            selected_project=pid, sub=sub, counts=counts,
                            pending=counts['unclassified']+counts['discuss']+counts['fix'],
+                           areas=areas, tags=all_tags,
                            status_labels=STATUS_LABELS, fmt=fmt)
 
 @app.route('/api/site-photo', methods=['POST'])
@@ -729,6 +764,8 @@ def api_site_photo_update(sid):
     fields, vals = [], []
     for k in ('note','tag','area','project_id'):
         if k in d: fields.append(f"{k}={ph}"); vals.append(d[k])
+    if 'favorite' in d:
+        fields.append(f"favorite={ph}"); vals.append(1 if d['favorite'] else 0)
     if 'status' in d:
         st = d['status'] if d['status'] in SITE_STATUSES else 'unclassified'
         fields.append(f"status={ph}"); vals.append(st)
