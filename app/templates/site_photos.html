@@ -17,21 +17,38 @@
 
   <form method="get" action="{{ url_for('site_photos') }}">
     {% if selected_project %}<input type="hidden" name="project_id" value="{{ selected_project }}">{% endif %}
+    {% if sel_area %}<input type="hidden" name="area" value="{{ sel_area }}">{% endif %}
+    {% if sel_tag %}<input type="hidden" name="tag" value="{{ sel_tag }}">{% endif %}
+    {% if sel_status %}<input type="hidden" name="status" value="{{ sel_status }}">{% endif %}
+    {% if fav %}<input type="hidden" name="fav" value="1">{% endif %}
     <input class="sp-search" name="q" value="{{ q }}" placeholder="🔍 搜尋（空間 / 工項 / 備註）">
+    <div class="sp-daterow">
+      <input class="sp-date" type="date" name="date_from" value="{{ date_from }}" aria-label="起始日期">
+      <span class="sp-dash">→</span>
+      <input class="sp-date" type="date" name="date_to" value="{{ date_to }}" aria-label="結束日期">
+      <button class="sp-datego" type="submit">篩選</button>
+    </div>
   </form>
 
   <div class="sp-chips">
     <a class="sp-chip {% if fav %}on{% endif %}"
-       href="{{ url_for('site_photos', project_id=selected_project, fav=(none if fav else 1), area=sel_area or none, tag=sel_tag or none, q=q or none) }}">⭐ 最愛{% if fav %}<span class="x">✕</span>{% endif %}</a>
+       href="{{ url_for('site_photos', project_id=selected_project, fav=(none if fav else 1), area=sel_area or none, tag=sel_tag or none, status=sel_status or none, date_from=date_from or none, date_to=date_to or none, q=q or none) }}">⭐ 最愛{% if fav %}<span class="x">✕</span>{% endif %}</a>
     {% for a in areas %}
       <a class="sp-chip {% if sel_area==a %}on{% endif %}"
-         href="{{ url_for('site_photos', project_id=selected_project, area=(none if sel_area==a else a), tag=sel_tag or none, q=q or none) }}">📍 {{ a }}{% if sel_area==a %}<span class="x">✕</span>{% endif %}</a>
+         href="{{ url_for('site_photos', project_id=selected_project, area=(none if sel_area==a else a), tag=sel_tag or none, status=sel_status or none, fav=fav or none, date_from=date_from or none, date_to=date_to or none, q=q or none) }}">📍 {{ a }}{% if sel_area==a %}<span class="x">✕</span>{% endif %}</a>
     {% endfor %}
     {% for t in filter_tags %}
       <a class="sp-chip {% if sel_tag==t %}on{% endif %}"
-         href="{{ url_for('site_photos', project_id=selected_project, tag=(none if sel_tag==t else t), area=sel_area or none, q=q or none) }}">🔧 {{ t }}{% if sel_tag==t %}<span class="x">✕</span>{% endif %}</a>
+         href="{{ url_for('site_photos', project_id=selected_project, tag=(none if sel_tag==t else t), area=sel_area or none, status=sel_status or none, fav=fav or none, date_from=date_from or none, date_to=date_to or none, q=q or none) }}">🔧 {{ t }}{% if sel_tag==t %}<span class="x">✕</span>{% endif %}</a>
     {% endfor %}
-    {% if sel_area or sel_tag or q or fav %}
+  </div>
+
+  <div class="sp-chips sp-chips-status">
+    {% for st in ['done','fix','discuss','unclassified'] %}
+      <a class="sp-chip sp-chip-st {% if sel_status==st %}on st-{{ st }}{% endif %}"
+         href="{{ url_for('site_photos', project_id=selected_project, status=(none if sel_status==st else st), area=sel_area or none, tag=sel_tag or none, fav=fav or none, date_from=date_from or none, date_to=date_to or none, q=q or none) }}">{{ status_labels[st] }}{% if sel_status==st %}<span class="x">✕</span>{% endif %}</a>
+    {% endfor %}
+    {% if sel_area or sel_tag or q or fav or sel_status or date_from or date_to %}
       <a class="sp-clear" href="{{ url_for('site_photos', project_id=selected_project) }}">清除篩選</a>
     {% endif %}
   </div>

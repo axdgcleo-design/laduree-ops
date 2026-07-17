@@ -672,6 +672,10 @@ def site_photos():
     tag  = request.args.get('tag','')
     q    = request.args.get('q','').strip()
     fav  = request.args.get('fav','')
+    status = request.args.get('status','')          # 依進度/狀態篩選
+    date_from = request.args.get('date_from','').strip()
+    date_to   = request.args.get('date_to','').strip()
+    if status not in SITE_STATUSES: status = ''
     projects = fetchall("SELECT * FROM projects ORDER BY name")
     sql = _site_photo_cols() + " AND s.parent_id IS NULL"; params = []
     if pid:  sql += f" AND s.project_id={ph}"; params.append(pid)
@@ -679,7 +683,11 @@ def site_photos():
     if tag:  # 工項為逗號分隔多標籤，做 token 比對
         sql += f" AND (s.tag={ph} OR s.tag LIKE {ph} OR s.tag LIKE {ph} OR s.tag LIKE {ph})"
         params += [tag, f"{tag},%", f"%,{tag}", f"%,{tag},%"]
+    if status: sql += f" AND s.status={ph}"; params.append(status)
     if fav:  sql += " AND s.favorite=1"
+    # 時間範圍：created_at 為 'YYYY-MM-DD HH:MM:SS'（SQLite 文字可字典序比較，PG 自動轉 timestamp）
+    if date_from: sql += f" AND s.created_at >= {ph}"; params.append(f"{date_from} 00:00:00")
+    if date_to:   sql += f" AND s.created_at <= {ph}"; params.append(f"{date_to} 23:59:59")
     if q:
         like = f"%{q}%"
         sql += f" AND (s.note LIKE {ph} OR s.area LIKE {ph} OR s.tag LIKE {ph})"
@@ -700,6 +708,7 @@ def site_photos():
     areas, all_tags, used_tags = _suggest(pid)
     return render_template('site_photos.html', groups=groups, projects=projects,
                            selected_project=pid, sel_area=area, sel_tag=tag, q=q, fav=fav,
+                           sel_status=status, date_from=date_from, date_to=date_to,
                            areas=areas, tags=all_tags, filter_tags=used_tags,
                            pending=_pending_count(pid), storage=_storage(pid),
                            status_labels=STATUS_LABELS, fmt=fmt)
