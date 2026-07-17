@@ -654,6 +654,13 @@ def _suggest(pid):
     tags = list(dict.fromkeys(DEFAULT_TAGS + used_tags))   # 預設在前、用過的補後（給快選）
     return areas, tags, used_tags
 
+def _chip_url(cur, key, val, active):
+    """產生 chip 的切換連結：保留其他篩選、切換自身、重置分頁。"""
+    a = {k: v for k, v in cur.items() if k != 'page'}
+    if active: a.pop(key, None)
+    else:      a[key] = val
+    return url_for('site_photos', **a)
+
 def _storage(pid):
     ph = _ph()
     sql = "SELECT COUNT(*) as c, COALESCE(SUM(LENGTH(image_data)),0) as b FROM site_photos WHERE 1=1"
@@ -676,24 +683,42 @@ def site_photos():
     date_from = request.args.get('date_from','').strip()
     date_to   = request.args.get('date_to','').strip()
     if status not in SITE_STATUSES: status = ''
+    try:    page = max(1, int(request.args.get('page', 1)))
+    except: page = 1
+
+    # 目前生效的篩選（供分頁連結與 chip 保留狀態）
+    cur = {}
+    for k, v in (('project_id',pid),('area',area),('tag',tag),('status',status),
+                 ('fav',fav),('date_from',date_from),('date_to',date_to),('q',q)):
+        if v: cur[k] = v
+    has_filter = any(cur.get(k) for k in ('area','tag','status','fav','date_from','date_to','q'))
+
     projects = fetchall("SELECT * FROM projects ORDER BY name")
-    sql = _site_photo_cols() + " AND s.parent_id IS NULL"; params = []
-    if pid:  sql += f" AND s.project_id={ph}"; params.append(pid)
-    if area: sql += f" AND s.area={ph}";       params.append(area)
+    # WHERE 條件（count 與 分頁查詢共用）
+    cond = " AND s.parent_id IS NULL"; params = []
+    if pid:  cond += f" AND s.project_id={ph}"; params.append(pid)
+    if area: cond += f" AND s.area={ph}";       params.append(area)
     if tag:  # 工項為逗號分隔多標籤，做 token 比對
-        sql += f" AND (s.tag={ph} OR s.tag LIKE {ph} OR s.tag LIKE {ph} OR s.tag LIKE {ph})"
+        cond += f" AND (s.tag={ph} OR s.tag LIKE {ph} OR s.tag LIKE {ph} OR s.tag LIKE {ph})"
         params += [tag, f"{tag},%", f"%,{tag}", f"%,{tag},%"]
-    if status: sql += f" AND s.status={ph}"; params.append(status)
-    if fav:  sql += " AND s.favorite=1"
+    if status: cond += f" AND s.status={ph}"; params.append(status)
+    if fav:  cond += " AND s.favorite=1"
     # 時間範圍：created_at 為 'YYYY-MM-DD HH:MM:SS'（SQLite 文字可字典序比較，PG 自動轉 timestamp）
-    if date_from: sql += f" AND s.created_at >= {ph}"; params.append(f"{date_from} 00:00:00")
-    if date_to:   sql += f" AND s.created_at <= {ph}"; params.append(f"{date_to} 23:59:59")
+    if date_from: cond += f" AND s.created_at >= {ph}"; params.append(f"{date_from} 00:00:00")
+    if date_to:   cond += f" AND s.created_at <= {ph}"; params.append(f"{date_to} 23:59:59")
     if q:
         like = f"%{q}%"
-        sql += f" AND (s.note LIKE {ph} OR s.area LIKE {ph} OR s.tag LIKE {ph})"
+        cond += f" AND (s.note LIKE {ph} OR s.area LIKE {ph} OR s.tag LIKE {ph})"
         params += [like, like, like]
-    sql += " ORDER BY s.created_at DESC"
-    photos = fetchall(sql, params)
+
+    # 分頁：避免一次載入 2000+ 張造成 DOM 過大、捲動卡頓
+    PER = 80
+    total = (fetchone(f"SELECT COUNT(*) as c FROM site_photos s WHERE 1=1{cond}", params) or {}).get('c', 0)
+    pages = max(1, (total + PER - 1) // PER)
+    if page > pages: page = pages
+    offset = (page - 1) * PER
+    data_sql = _site_photo_cols() + cond + f" ORDER BY s.created_at DESC LIMIT {PER} OFFSET {offset}"
+    photos = fetchall(data_sql, params)
     # 依日期分組 + 拆解多標籤
     groups = []
     cur_day, bucket = None, None
@@ -706,10 +731,23 @@ def site_photos():
         bucket['rows'].append(p)
     # 篩選列只顯示「實際用過」的工項；快選用預設+用過
     areas, all_tags, used_tags = _suggest(pid)
+    # chip 連結一律在後端組好（模板只負責顯示）
+    area_chips = [{'name':a,'active':(area==a),'url':_chip_url(cur,'area',a,area==a)} for a in areas]
+    tag_chips  = [{'name':t,'active':(tag==t), 'url':_chip_url(cur,'tag',t,tag==t)} for t in used_tags]
+    status_chips = [{'key':st,'label':STATUS_LABELS[st],'active':(status==st),
+                     'url':_chip_url(cur,'status',st,status==st)} for st in ('done','fix','discuss','unclassified')]
+    fav_chip_url = _chip_url(cur, 'fav', '1', bool(fav))
+    clear_url = url_for('site_photos', project_id=pid) if has_filter else None
+    prev_url = url_for('site_photos', page=page-1, **{k:v for k,v in cur.items() if k!='page'}) if page > 1 else None
+    next_url = url_for('site_photos', page=page+1, **{k:v for k,v in cur.items() if k!='page'}) if page < pages else None
     return render_template('site_photos.html', groups=groups, projects=projects,
                            selected_project=pid, sel_area=area, sel_tag=tag, q=q, fav=fav,
                            sel_status=status, date_from=date_from, date_to=date_to,
                            areas=areas, tags=all_tags, filter_tags=used_tags,
+                           area_chips=area_chips, tag_chips=tag_chips, status_chips=status_chips,
+                           fav_chip_url=fav_chip_url, clear_url=clear_url, has_filter=has_filter,
+                           page=page, pages=pages, total=total,
+                           prev_url=prev_url, next_url=next_url,
                            pending=_pending_count(pid), storage=_storage(pid),
                            status_labels=STATUS_LABELS, fmt=fmt)
 

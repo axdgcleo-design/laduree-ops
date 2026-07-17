@@ -312,6 +312,11 @@ nav a.nav-link.active { color: var(--cream); border-bottom-color: var(--red); }
 .sp-chip-st.on.st-fix { background:var(--red); color:#fff; border-color:var(--red); }
 .sp-chip-st.on.st-discuss { background:var(--amber); color:#fff; border-color:var(--amber); }
 .sp-chip-st.on.st-unclassified { background:var(--mid); color:var(--cream); border-color:var(--mid); }
+.sp-pager { display:flex; align-items:center; justify-content:center; gap:.9rem; margin:1.6rem 0 .5rem; }
+.sp-page-btn { font-size:.78rem; padding:.4rem .9rem; border:1px solid var(--line);
+  background:var(--white); border-radius:8px; color:var(--mid); text-decoration:none; }
+.sp-page-btn.dis { opacity:.35; pointer-events:none; }
+.sp-page-info { font-size:.75rem; color:var(--muted); white-space:nowrap; }
 
 /* 日期分組 */
 .sp-day { font-size:.74rem; font-weight:600; color:var(--mid); margin:1rem 0 .55rem; letter-spacing:.03em; }
