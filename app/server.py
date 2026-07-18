@@ -249,6 +249,8 @@ def init_db():
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS issue_resolved TEXT DEFAULT '';
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS favorite INTEGER DEFAULT 0;
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS thumb_data TEXT DEFAULT '';
+        ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS mode TEXT DEFAULT 'site';
+        ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS category TEXT DEFAULT '';
         CREATE TABLE IF NOT EXISTS company_info (
             id INTEGER PRIMARY KEY DEFAULT 1,
             name TEXT DEFAULT '漣一設計有限公司',
@@ -387,7 +389,9 @@ def init_db():
                        ('issue_found',"TEXT DEFAULT ''"),
                        ('issue_resolved',"TEXT DEFAULT ''"),
                        ('favorite','INTEGER DEFAULT 0'),
-                       ('thumb_data',"TEXT DEFAULT ''")):
+                       ('thumb_data',"TEXT DEFAULT ''"),
+                       ('mode',"TEXT DEFAULT 'site'"),
+                       ('category',"TEXT DEFAULT ''")):
             if c not in cols:
                 conn.execute(f"ALTER TABLE site_photos ADD COLUMN {c} {ddl}")
         conn.commit(); conn.close()
@@ -638,6 +642,8 @@ def _site_photo_cols():
             "FROM site_photos s LEFT JOIN projects p ON s.project_id=p.id WHERE 1=1")
 
 DEFAULT_TAGS = ['保護/拆除','水電','泥作','木作','油漆','磁磚','防水','輕隔間','鋁窗','清潔']
+# 個人模式的預設分類（想買、截圖…）
+PERSONAL_CATS = ['想買','截圖','參考靈感','發票收據','生活紀錄','其他']
 
 def _split_tags(v):
     return [t.strip() for t in (v or '').split(',') if t.strip()]
@@ -817,12 +823,15 @@ def api_site_photo_add():
         return jsonify({'ok':False,'error':'no image'}), 400
     status = d.get('status','unclassified')
     if status not in SITE_STATUSES: status = 'unclassified'
+    mode = d.get('mode','site')
+    if mode not in ('site','personal'): mode = 'site'
     thumb = _make_thumb(img) or ''
     execute(f"""INSERT INTO site_photos
-        (project_id,image_data,thumb_data,mime,note,tag,area,status)
-        VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+        (project_id,image_data,thumb_data,mime,note,tag,area,status,mode,category)
+        VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
         (d.get('project_id') or None, img, thumb, d.get('mime','image/jpeg'),
-         d.get('note',''), d.get('tag',''), d.get('area',''), status))
+         d.get('note',''), d.get('tag',''), d.get('area',''), status,
+         mode, d.get('category','')))
     commit()
     return jsonify({'ok':True,'id':last_insert_id()})
 
@@ -830,8 +839,10 @@ def api_site_photo_add():
 def api_site_photo_update(sid):
     d = request.json or {}; ph = _ph()
     fields, vals = [], []
-    for k in ('note','tag','area','project_id'):
+    for k in ('note','tag','area','project_id','category'):
         if k in d: fields.append(f"{k}={ph}"); vals.append(d[k])
+    if 'mode' in d and d['mode'] in ('site','personal'):
+        fields.append(f"mode={ph}"); vals.append(d['mode'])
     if 'favorite' in d:
         fields.append(f"favorite={ph}"); vals.append(1 if d['favorite'] else 0)
     if 'status' in d:
@@ -958,6 +969,215 @@ def site_photo_img(sid):
     resp = Response(raw, mimetype=row['mime'] or 'image/jpeg')
     resp.headers['Cache-Control'] = 'public, max-age=31536000'
     return resp
+
+# ── 整理助手（獨立 PWA：工地 / 個人 雙模式）──────────────────────────
+APP_MODES = ('site','personal')
+def _app_mode(v): return v if v in APP_MODES else 'site'
+
+_APP_COLS = ("SELECT s.id,s.project_id,s.mode,s.category,s.note,s.tag,s.area,"
+             "s.status,s.favorite,s.created_at,p.name as project_name "
+             "FROM site_photos s LEFT JOIN projects p ON s.project_id=p.id "
+             "WHERE s.parent_id IS NULL")
+
+def _prep(rows):
+    for p in rows:
+        ca = _norm_dt(p['created_at'])
+        p['_day'], p['_time'] = ca[:10], ca[11:16]
+        p['_tags'] = _split_tags(p.get('tag'))
+    return rows
+
+def _group_by_day(rows):
+    groups, cur, bucket = [], None, None
+    for p in rows:
+        if p['_day'] != cur:
+            cur = p['_day']; bucket = {'day': cur, 'rows': []}; groups.append(bucket)
+        bucket['rows'].append(p)
+    return groups
+
+def _group_by_worktype(rows, order_hint):
+    """依工種分組：每張以第一個工項歸類，無工項歸『未分類』。"""
+    buckets = {}
+    for p in rows:
+        key = p['_tags'][0] if p['_tags'] else ''
+        buckets.setdefault(key, []).append(p)
+    keys = [k for k in order_hint if k in buckets] + \
+           sorted(k for k in buckets if k and k not in order_hint)
+    out = [{'name': k, 'rows': buckets[k]} for k in keys]
+    if '' in buckets: out.append({'name': '未分類', 'rows': buckets['']})
+    return out
+
+def _previews(where_extra, params, n=4):
+    sql = ("SELECT id FROM site_photos WHERE parent_id IS NULL " + where_extra +
+           " ORDER BY created_at DESC LIMIT " + str(int(n)))
+    return [r['id'] for r in fetchall(sql, params)]
+
+def _personal_cats():
+    used = [r['category'] for r in fetchall(
+        "SELECT DISTINCT category FROM site_photos WHERE mode='personal' AND category<>''")]
+    return list(dict.fromkeys(PERSONAL_CATS + sorted(used)))
+
+def _app_pickers():
+    """編輯 sheet 所需的下拉資料（案場／空間／工項／個人分類）。"""
+    areas, all_tags, _ = _suggest(None)
+    return {'sheet_projects': fetchall("SELECT id,name FROM projects ORDER BY name"),
+            'sheet_areas': areas, 'sheet_tags': all_tags, 'sheet_cats': _personal_cats()}
+
+@app.route('/app')
+def app_home():
+    return redirect(url_for('app_sites'))
+
+@app.route('/app/sites')
+def app_sites():
+    ph = _ph()
+    mode = _app_mode(request.args.get('mode','site'))
+    cards = []
+    if mode == 'site':
+        stat = {}
+        for r in fetchall("SELECT project_id, COUNT(*) c, MAX(created_at) m FROM site_photos "
+                          "WHERE mode='site' AND parent_id IS NULL AND project_id IS NOT NULL "
+                          "GROUP BY project_id"):
+            stat[r['project_id']] = {'cnt': r['c'], 'last': _norm_dt(r['m'])[:10]}
+        for p in fetchall("SELECT id,name,client_name FROM projects ORDER BY name"):
+            s = stat.get(p['id'])
+            if not s: continue
+            cards.append({'link': url_for('app_group_site', pid=p['id']),
+                          'title': p['name'], 'sub': p['client_name'] or '',
+                          'cnt': s['cnt'], 'last': s['last'],
+                          'previews': _previews(f"AND mode='site' AND project_id={ph}", (p['id'],))})
+        un = fetchone("SELECT COUNT(*) c, MAX(created_at) m FROM site_photos "
+                      "WHERE mode='site' AND parent_id IS NULL AND project_id IS NULL")
+        if un and un['c']:
+            cards.append({'link': url_for('app_group_site', pid=0),
+                          'title': '未指定案場', 'sub': '', 'cnt': un['c'],
+                          'last': _norm_dt(un['m'])[:10],
+                          'previews': _previews("AND mode='site' AND project_id IS NULL", ())})
+    else:
+        for r in fetchall("SELECT category, COUNT(*) c, MAX(created_at) m FROM site_photos "
+                          "WHERE mode='personal' AND parent_id IS NULL GROUP BY category"):
+            cards.append({'link': url_for('app_group_cat', name=(r['category'] or '未分類')),
+                          'title': r['category'] or '未分類', 'sub': '', 'cnt': r['c'],
+                          'last': _norm_dt(r['m'])[:10],
+                          'previews': _previews(f"AND mode='personal' AND category={ph}", (r['category'] or '',))})
+    cards.sort(key=lambda c: (c['last'] or ''), reverse=True)
+    counts = {m: (fetchone(f"SELECT COUNT(*) c FROM site_photos WHERE mode='{m}' AND parent_id IS NULL") or {}).get('c',0)
+              for m in APP_MODES}
+    return render_template('app_sites.html', mode=mode, cards=cards, counts=counts, active='sites')
+
+@app.route('/app/g/site/<int:pid>')
+def app_group_site(pid):
+    ph = _ph()
+    view = request.args.get('view','photo')
+    if pid == 0:
+        title = '未指定案場'
+        rows = _prep(fetchall(_APP_COLS + " AND s.mode='site' AND s.project_id IS NULL ORDER BY s.created_at DESC", ()))
+        target = {'mode':'site','project_id':0}
+    else:
+        proj = fetchone(f"SELECT id,name FROM projects WHERE id={ph}", (pid,))
+        if not proj: return redirect(url_for('app_sites'))
+        title = proj['name']
+        rows = _prep(fetchall(_APP_COLS + f" AND s.mode='site' AND s.project_id={ph} ORDER BY s.created_at DESC", (pid,)))
+        target = {'mode':'site','project_id':pid}
+    return render_template('app_group.html', mode='site', title=title,
+        back=url_for('app_sites', mode='site'), view=view,
+        groups=_group_by_day(rows), typegroups=_group_by_worktype(rows, DEFAULT_TAGS),
+        total=len(rows), type_label='依工種', active='sites', target=target, **_app_pickers())
+
+@app.route('/app/g/cat/<path:name>')
+def app_group_cat(name):
+    ph = _ph()
+    view = request.args.get('view','photo')
+    real = '' if name == '未分類' else name
+    rows = _prep(fetchall(_APP_COLS + f" AND s.mode='personal' AND s.category={ph} ORDER BY s.created_at DESC", (real,)))
+    return render_template('app_group.html', mode='personal', title=name,
+        back=url_for('app_sites', mode='personal'), view=view,
+        groups=_group_by_day(rows), typegroups=_group_by_worktype(rows, []),
+        total=len(rows), type_label='依標籤', active='sites',
+        target={'mode':'personal','category':real}, **_app_pickers())
+
+@app.route('/app/timeline')
+def app_timeline():
+    ph = _ph()
+    mode = _app_mode(request.args.get('mode','site'))
+    rows = _prep(fetchall(_APP_COLS + f" AND s.mode={ph} ORDER BY s.created_at DESC LIMIT 500", (mode,)))
+    total = (fetchone(f"SELECT COUNT(*) c FROM site_photos WHERE mode={ph} AND parent_id IS NULL", (mode,)) or {}).get('c',0)
+    return render_template('app_timeline.html', mode=mode, groups=_group_by_day(rows),
+        shown=len(rows), total=total, active='timeline', **_app_pickers())
+
+@app.route('/app/organize')
+def app_organize():
+    ph = _ph()
+    mode = _app_mode(request.args.get('mode','site'))
+    if mode == 'site':
+        cond = " AND s.mode='site' AND s.project_id IS NULL"
+    else:
+        cond = " AND s.mode='personal' AND (s.category='' OR s.category IS NULL)"
+    rows = _prep(fetchall(_APP_COLS + cond + " ORDER BY s.created_at DESC LIMIT 300", ()))
+    projects = fetchall("SELECT id,name FROM projects ORDER BY name")
+    areas, all_tags, _ = _suggest(None)
+    return render_template('app_organize.html', mode=mode, photos=rows, total=len(rows),
+        projects=projects, areas=areas, tags=all_tags, cats=_personal_cats(), active='organize',
+        **_app_pickers())
+
+@app.route('/app/search')
+def app_search():
+    ph = _ph()
+    mode = _app_mode(request.args.get('mode','site'))
+    q = request.args.get('q','').strip()
+    cond = f" AND s.mode={ph}"; params = [mode]
+    if q:
+        like = f"%{q}%"
+        cond += (f" AND (s.note LIKE {ph} OR s.area LIKE {ph} OR s.tag LIKE {ph} OR s.category LIKE {ph})")
+        params += [like, like, like, like]
+    rows = _prep(fetchall(_APP_COLS + cond + " ORDER BY s.created_at DESC LIMIT 300", params)) if q else []
+    return render_template('app_search.html', mode=mode, q=q, groups=_group_by_day(rows),
+        total=len(rows), active='search', **_app_pickers())
+
+@app.route('/app/add')
+def app_add():
+    mode = _app_mode(request.args.get('mode','site'))
+    projects = fetchall("SELECT id,name FROM projects ORDER BY name")
+    areas, all_tags, _ = _suggest(None)
+    return render_template('app_add.html', mode=mode, projects=projects,
+        areas=areas, tags=all_tags, cats=_personal_cats(), active='add')
+
+@app.route('/api/app/upload', methods=['POST'])
+def api_app_upload():
+    d = request.json or {}; ph = _ph()
+    mode = _app_mode(d.get('mode','site'))
+    imgs = d.get('images') or []
+    project_id = d.get('project_id') or None
+    if mode == 'personal': project_id = None
+    category = d.get('category','') if mode == 'personal' else ''
+    tag = d.get('tag',''); area = d.get('area',''); note = d.get('note','')
+    n = 0
+    for raw in imgs:
+        img = raw or ''
+        if img.startswith('data:') and ',' in img: img = img.split(',',1)[1]
+        if not img: continue
+        thumb = _make_thumb(img) or ''
+        execute(f"""INSERT INTO site_photos
+            (project_id,image_data,thumb_data,mime,note,tag,area,status,mode,category)
+            VALUES ({ph},{ph},{ph},'image/jpeg',{ph},{ph},{ph},'unclassified',{ph},{ph})""",
+            (project_id, img, thumb, note, tag, area, mode, category))
+        n += 1
+    commit()
+    return jsonify({'ok':True,'count':n})
+
+@app.route('/app/manifest.webmanifest')
+def app_manifest():
+    from flask import Response
+    data = {
+        "name": "整理助手", "short_name": "整理",
+        "start_url": "/app", "scope": "/app", "display": "standalone",
+        "background_color": "#f4f1ec", "theme_color": "#1a1a1a",
+        "icons": [
+            {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/static/icons/icon-512-maskable.png", "sizes": "512x512",
+             "type": "image/png", "purpose": "maskable"}
+        ]
+    }
+    return Response(json.dumps(data), mimetype='application/manifest+json')
 
 # ── PWA（可安裝到手機主畫面）─────────────────────────────────────────
 @app.route('/manifest.webmanifest')
