@@ -248,6 +248,7 @@ def init_db():
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS issue_found TEXT DEFAULT '';
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS issue_resolved TEXT DEFAULT '';
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS favorite INTEGER DEFAULT 0;
+        ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS thumb_data TEXT DEFAULT '';
         CREATE TABLE IF NOT EXISTS company_info (
             id INTEGER PRIMARY KEY DEFAULT 1,
             name TEXT DEFAULT '漣一設計有限公司',
@@ -385,7 +386,8 @@ def init_db():
         for c, ddl in (('parent_id','INTEGER'),
                        ('issue_found',"TEXT DEFAULT ''"),
                        ('issue_resolved',"TEXT DEFAULT ''"),
-                       ('favorite','INTEGER DEFAULT 0')):
+                       ('favorite','INTEGER DEFAULT 0'),
+                       ('thumb_data',"TEXT DEFAULT ''")):
             if c not in cols:
                 conn.execute(f"ALTER TABLE site_photos ADD COLUMN {c} {ddl}")
         conn.commit(); conn.close()
@@ -661,6 +663,24 @@ def _chip_url(cur, key, val, active):
     else:      a[key] = val
     return url_for('site_photos', **a)
 
+THUMB_MAX = 480   # 縮圖長邊（px）
+
+def _make_thumb(b64):
+    """由原圖 base64 產生 ~480px JPEG 縮圖（修正 EXIF 方向）；失敗回傳 None。"""
+    if not b64: return None
+    try:
+        import base64, io
+        from PIL import Image, ImageOps
+        im = Image.open(io.BytesIO(base64.b64decode(b64)))
+        im = ImageOps.exif_transpose(im)          # 修正手機拍照方向
+        im = im.convert('RGB')
+        im.thumbnail((THUMB_MAX, THUMB_MAX))
+        out = io.BytesIO()
+        im.save(out, format='JPEG', quality=72, optimize=True)
+        return base64.b64encode(out.getvalue()).decode()
+    except Exception:
+        return None
+
 def _storage(pid):
     ph = _ph()
     sql = "SELECT COUNT(*) as c, COALESCE(SUM(LENGTH(image_data)),0) as b FROM site_photos WHERE 1=1"
@@ -797,10 +817,11 @@ def api_site_photo_add():
         return jsonify({'ok':False,'error':'no image'}), 400
     status = d.get('status','unclassified')
     if status not in SITE_STATUSES: status = 'unclassified'
+    thumb = _make_thumb(img) or ''
     execute(f"""INSERT INTO site_photos
-        (project_id,image_data,mime,note,tag,area,status)
-        VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
-        (d.get('project_id') or None, img, d.get('mime','image/jpeg'),
+        (project_id,image_data,thumb_data,mime,note,tag,area,status)
+        VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+        (d.get('project_id') or None, img, thumb, d.get('mime','image/jpeg'),
          d.get('note',''), d.get('tag',''), d.get('area',''), status))
     commit()
     return jsonify({'ok':True,'id':last_insert_id()})
@@ -867,10 +888,11 @@ def api_site_photo_after(sid):
     img = d.get('image_data','') or ''
     if img.startswith('data:') and ',' in img: img = img.split(',',1)[1]
     if not img: return jsonify({'ok':False,'error':'no image'}), 400
+    thumb = _make_thumb(img) or ''
     execute(f"""INSERT INTO site_photos
-        (project_id,image_data,mime,status,parent_id,note)
-        VALUES ({ph},{ph},{ph},'done',{ph},{ph})""",
-        (parent['project_id'], img, d.get('mime','image/jpeg'), sid, d.get('note','')))
+        (project_id,image_data,thumb_data,mime,status,parent_id,note)
+        VALUES ({ph},{ph},{ph},{ph},'done',{ph},{ph})""",
+        (parent['project_id'], img, thumb, d.get('mime','image/jpeg'), sid, d.get('note','')))
     commit()
     return jsonify({'ok':True,'id':last_insert_id()})
 
@@ -893,6 +915,33 @@ def site_photo_report(sid):
     company = fetchone("SELECT * FROM company_info WHERE id=1") or {}
     return render_template('site_report.html', photo=photo, afters=_after_photos(sid),
                            company=company)
+
+@app.route('/site-photo/<int:sid>/thumb')
+def site_photo_thumb(sid):
+    """回傳縮圖；舊照片首次瀏覽時即時生成並回填 thumb_data（免整批遷移）。"""
+    import base64
+    from flask import Response
+    ph = _ph()
+    row = fetchone(f"SELECT thumb_data,image_data FROM site_photos WHERE id={ph}", (sid,))
+    if not row: return "not found", 404
+    tb = row.get('thumb_data') or ''
+    if not tb:                                   # 尚無縮圖 → 由原圖生成並回存
+        tb = _make_thumb(row.get('image_data') or '')
+        if tb:
+            try:
+                execute(f"UPDATE site_photos SET thumb_data={ph} WHERE id={ph}", (tb, sid))
+                commit()
+            except Exception:
+                pass
+    if not tb:                                   # 生成失敗 → 退回原圖端點
+        return redirect(url_for('site_photo_img', sid=sid))
+    try:
+        raw = base64.b64decode(tb)
+    except Exception:
+        return redirect(url_for('site_photo_img', sid=sid))
+    resp = Response(raw, mimetype='image/jpeg')
+    resp.headers['Cache-Control'] = 'public, max-age=31536000'
+    return resp
 
 @app.route('/site-photo/<int:sid>/img')
 def site_photo_img(sid):
