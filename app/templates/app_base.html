@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <title>{% block title %}整理助手{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <meta name="theme-color" content="#1a1a1a">
+  <link rel="manifest" href="/app/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="整理">
+  {% block head %}{% endblock %}
+</head>
+<body class="appshell">
+  <div class="ap-top">
+    {% block topbar %}
+    <div class="ap-title">{% block heading %}整理助手{% endblock %}</div>
+    {% endblock %}
+  </div>
+  <div class="ap-wrap">
+    {% block body %}{% endblock %}
+  </div>
+  {% include '_app_tabs.html' %}
+  {% block sheets %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

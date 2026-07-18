@@ -1,0 +1,39 @@
+{% extends 'app_base.html' %}
+{% block title %}案場 — 整理助手{% endblock %}
+{% block heading %}整理助手{% endblock %}
+{% block body %}
+
+<div class="ap-seg">
+  <a href="{{ url_for('app_sites', mode='site') }}" class="{% if mode=='site' %}on{% endif %}">
+    🏗️ 工地<span class="n"> {{ counts.site }}</span></a>
+  <a href="{{ url_for('app_sites', mode='personal') }}" class="{% if mode=='personal' %}on{% endif %}">
+    📇 個人<span class="n"> {{ counts.personal }}</span></a>
+</div>
+
+{% if cards %}
+  {% for c in cards %}
+  <a class="ap-card {% if mode=='personal' %}c-personal{% endif %}" href="{{ c.link }}">
+    <div class="ap-card-h">
+      <span class="ap-card-t">{{ c.title }}</span>
+      <span class="ap-card-arrow">›</span>
+    </div>
+    <div class="ap-card-m">
+      {% if c.sub %}{{ c.sub }} · {% endif %}共 {{ c.cnt }} 張{% if c.last %} · 最後 {{ c.last }}{% endif %}
+    </div>
+    {% if c.previews %}
+    <div class="ap-prev">
+      {% for pid in c.previews %}<img loading="lazy" src="{{ url_for('site_photo_thumb', sid=pid) }}">{% endfor %}
+    </div>
+    {% endif %}
+  </a>
+  {% endfor %}
+{% else %}
+  <div class="ap-empty">
+    <div class="big">📷</div>
+    <div style="margin-top:.5rem">{% if mode=='site' %}還沒有工地照片{% else %}還沒有個人照片{% endif %}</div>
+    <div style="font-size:.8rem;margin-top:.3rem">點下方 ＋ 從相簿匯入或拍照</div>
+  </div>
+{% endif %}
+
+<div class="ap-hint">點 ＋ 匯入照片 · 到「整理」快速分類</div>
+{% endblock %}

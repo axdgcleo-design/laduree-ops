@@ -1,0 +1,17 @@
+{% macro cell(s) %}
+<button class="ap-cell" onclick='apOpen({{ s.id }}, {{ (s.mode or "site")|tojson }}, {{ (s.note or "")|tojson }}, {{ (s.tag or "")|tojson }}, {{ (s.area or "")|tojson }}, {{ (s.category or "")|tojson }}, {{ (s.project_name or "")|tojson }})'>
+  <img loading="lazy" src="{{ url_for('site_photo_thumb', sid=s.id) }}">
+  {% if s.favorite %}<span class="ap-star">★</span>{% endif %}
+  {% if s.mode=='site' and not s.project_id %}<span class="ap-un"></span>{% elif s.mode=='personal' and not s.category %}<span class="ap-un"></span>{% endif %}
+  <span class="ap-t">{{ s._time }}{% if s._tags %} · {{ s._tags[0] }}{% endif %}</span>
+</button>
+{% endmacro %}
+
+{% macro daygrid(groups) %}
+  {% for g in groups %}
+  <div class="ap-day">{{ g.day }}</div>
+  <div class="ap-grid">
+    {% for s in g.rows %}{{ cell(s) }}{% endfor %}
+  </div>
+  {% endfor %}
+{% endmacro %}
