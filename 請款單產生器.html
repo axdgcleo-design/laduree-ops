@@ -149,12 +149,9 @@
         <div class="fg"><label>統一編號</label><input id="co-taxid" oninput="save()"></div>
         <div class="fg"><label>公司地址（選填）</label><input id="co-addr" oninput="save()"></div>
       </div>
-      <h2 style="margin-top:16px">匯款資訊 <span class="hint">（請款單下方，業主匯款用）</span></h2>
-      <div class="grid g3">
-        <div class="fg"><label>銀行 / 分行</label><input id="co-bank" oninput="save()" placeholder="台灣銀行 信義分行"></div>
-        <div class="fg"><label>戶名</label><input id="co-bankname" oninput="save()"></div>
-        <div class="fg"><label>帳號</label><input id="co-bankacc" oninput="save()"></div>
-      </div>
+      <h2 style="margin-top:16px">匯款資訊 <span class="hint">（可填多個帳號，開請款單時再選要用哪個）</span></h2>
+      <div id="bank-list"></div>
+      <span class="addrow" onclick="addBank()">＋ 新增匯款帳號</span>
     </div>
   </div>
 
@@ -173,6 +170,7 @@
       <div class="fg full"><label>業主地址（選填）</label><input id="p-addr" oninput="save();renderInvoice()"></div>
       <div class="fg"><label>合約類型</label><select id="p-ctype" onchange="save();renderInvoice()"><option value="design">設計費合約</option><option value="construction">工程款合約</option></select></div>
       <div class="fg"><label>合約總額（NT$）</label><input id="p-total" type="number" oninput="recalcRatios();save();renderInvoice()" placeholder="2000000"></div>
+      <div class="fg full"><label>本專案匯款帳號 <span style="color:var(--muted)">（請款單下方顯示這個）</span></label><select id="p-bank" onchange="save();renderInvoice()"></select></div>
     </div>
   </div>
 
@@ -229,11 +227,12 @@ let DB = { company:{}, projects:[], sel:null };
 function defaultCompany(){
   return { name:'漣一設計有限公司', name_en:'LA DURÉE', tel:'0975-602-433',
            email:'laduree.design@gmail.com', tax_id:'83401776', address:'',
-           bank:'', bank_name:'', bank_acc:'' };
+           banks:[ newBank() ] };
 }
+function newBank(){ return { id:uid(), label:'', bank:'', name:'', acc:'' }; }
 function blankProject(){
   return { id:uid(), name:'', client:'', addr:'', ctype:'construction', total:0,
-           periods:[ newPeriod('第一期 — 簽約訂金', 30) ], curId:null };
+           bankId:null, periods:[ newPeriod('第一期 — 簽約訂金', 30) ], curId:null };
 }
 function newPeriod(label, ratio){
   return { id:uid(), label:label||'', ratio:ratio||0, amount:0, method:'transfer',
@@ -245,6 +244,14 @@ function newPeriod(label, ratio){
 function load(){
   try{ const raw=localStorage.getItem(KEY); if(raw) DB=JSON.parse(raw); }catch(e){}
   if(!DB.company || !DB.company.name) DB.company = defaultCompany();
+  // 舊資料相容：把單一帳號欄位轉成 banks 陣列
+  if(!Array.isArray(DB.company.banks)){
+    const b=newBank();
+    b.bank=DB.company.bank||''; b.name=DB.company.bank_name||''; b.acc=DB.company.bank_acc||'';
+    DB.company.banks = (b.bank||b.name||b.acc)?[b]:[newBank()];
+    delete DB.company.bank; delete DB.company.bank_name; delete DB.company.bank_acc;
+  }
+  if(DB.company.banks.length===0) DB.company.banks=[newBank()];
   if(!DB.projects) DB.projects=[];
   if(DB.projects.length===0){ const p=blankProject(); p.periods[0].amount=0; DB.projects.push(p); DB.sel=p.id; }
   if(!DB.sel || !DB.projects.find(p=>p.id===DB.sel)) DB.sel=DB.projects[0].id;
@@ -261,10 +268,9 @@ function save(){
   const c=DB.company;
   c.name=val('co-name'); c.name_en=val('co-nameen'); c.tel=val('co-tel');
   c.email=val('co-email'); c.tax_id=val('co-taxid'); c.address=val('co-addr');
-  c.bank=val('co-bank'); c.bank_name=val('co-bankname'); c.bank_acc=val('co-bankacc');
   const p=curProj(); if(p){
     p.name=val('p-name'); p.client=val('p-client'); p.addr=val('p-addr');
-    p.ctype=val('p-ctype'); p.total=num('p-total');
+    p.ctype=val('p-ctype'); p.total=num('p-total'); p.bankId=val('p-bank');
   }
   persist();
 }
@@ -276,7 +282,7 @@ function fillForm(){
   const c=DB.company;
   set('co-name',c.name); set('co-nameen',c.name_en); set('co-tel',c.tel);
   set('co-email',c.email); set('co-taxid',c.tax_id); set('co-addr',c.address);
-  set('co-bank',c.bank); set('co-bankname',c.bank_name); set('co-bankacc',c.bank_acc);
+  renderBanks();
   // 專案下拉
   const sel=document.getElementById('proj-select');
   sel.innerHTML = DB.projects.map(p=>`<option value="${p.id}">${(p.name||'(未命名專案)')} ｜ ${p.client||'—'}</option>`).join('');
@@ -284,9 +290,36 @@ function fillForm(){
   const p=curProj();
   set('p-name',p.name); set('p-client',p.client); set('p-addr',p.addr);
   set('p-ctype',p.ctype); set('p-total',p.total||'');
+  fillBankSelect();
   renderRows();
 }
 const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v==null?'':v; };
+
+/* ---------- 匯款帳號（多筆） ---------- */
+function bankText(b,i){ return (b.label||('帳號'+(i+1)))+(b.bank?'｜'+b.bank:'')+(b.acc?'｜'+b.acc:''); }
+function renderBanks(){
+  const wrap=document.getElementById('bank-list');
+  wrap.innerHTML = DB.company.banks.map((b,i)=>`
+    <div class="grid" style="grid-template-columns:1fr 1.3fr 1fr 1.3fr 24px;gap:8px;margin-bottom:8px;align-items:end">
+      <div class="fg"><label>標籤（選填）</label><input value="${esc(b.label)}" oninput="updBank(${i},'label',this.value)" placeholder="主帳戶"></div>
+      <div class="fg"><label>銀行 / 分行</label><input value="${esc(b.bank)}" oninput="updBank(${i},'bank',this.value)" placeholder="台灣銀行 信義分行"></div>
+      <div class="fg"><label>戶名</label><input value="${esc(b.name)}" oninput="updBank(${i},'name',this.value)"></div>
+      <div class="fg"><label>帳號</label><input value="${esc(b.acc)}" oninput="updBank(${i},'acc',this.value)"></div>
+      <span class="delrow" style="padding-bottom:8px" onclick="delBank(${i})">×</span>
+    </div>`).join('');
+}
+function fillBankSelect(){
+  const p=curProj(); const sel=document.getElementById('p-bank');
+  sel.innerHTML = DB.company.banks.map((b,i)=>`<option value="${b.id}">${esc(bankText(b,i))}</option>`).join('');
+  if(!p.bankId || !DB.company.banks.find(b=>b.id===p.bankId)) p.bankId=DB.company.banks[0].id;
+  sel.value=p.bankId;
+}
+function updBank(i,k,v){ DB.company.banks[i][k]=v; persist(); fillBankSelect(); renderInvoice(); }
+function addBank(){ DB.company.banks.push(newBank()); persist(); renderBanks(); fillBankSelect(); toast('已新增匯款帳號'); }
+function delBank(i){
+  if(DB.company.banks.length<=1){ toast('至少要保留一個帳號'); return; }
+  DB.company.banks.splice(i,1); persist(); renderBanks(); fillBankSelect(); renderInvoice();
+}
 
 /* ---------- 期別列 ---------- */
 function renderRows(){
@@ -413,11 +446,13 @@ function renderInvoice(){
     </tr>`;
   }).join('');
 
-  const bankBlock = (c.bank||c.bank_name||c.bank_acc) ? `
+  const banks=c.banks||[];
+  const sb = banks.find(b=>b.id===p.bankId) || banks[0] || null;
+  const bankBlock = (sb && (sb.bank||sb.name||sb.acc)) ? `
     <div class="fblbl">匯款資訊</div>
-    ${c.bank?`<div class="fbrow"><span class="fbk">銀行</span><span class="fbv">${esc(c.bank)}</span></div>`:''}
-    ${c.bank_name?`<div class="fbrow"><span class="fbk">戶名</span><span class="fbv">${esc(c.bank_name)}</span></div>`:''}
-    ${c.bank_acc?`<div class="fbrow"><span class="fbk">帳號</span><span class="fbv">${esc(c.bank_acc)}</span></div>`:''}` : '';
+    ${sb.bank?`<div class="fbrow"><span class="fbk">銀行</span><span class="fbv">${esc(sb.bank)}</span></div>`:''}
+    ${sb.name?`<div class="fbrow"><span class="fbk">戶名</span><span class="fbv">${esc(sb.name)}</span></div>`:''}
+    ${sb.acc?`<div class="fbrow"><span class="fbk">帳號</span><span class="fbv">${esc(sb.acc)}</span></div>`:''}` : '';
 
   document.getElementById('invoice').innerHTML = `
     <div class="hd">
