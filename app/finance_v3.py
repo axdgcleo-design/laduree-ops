@@ -165,9 +165,36 @@ def migrate_legacy(data):
     return _migrate_local(data)
 
 
+def _trade_of(vendor_name, category):
+    """工種判定：category 若是通用值（工程/其他/空）則從『工種/人名』前綴回推。"""
+    category = (category or '').strip()
+    if category and category not in ('工程', '其他'):
+        return category
+    vn = (vendor_name or '').strip()
+    if '/' in vn:
+        pre = vn.split('/', 1)[0].strip()
+        if pre:
+            return pre
+    return category or '其他'
+
+def _vendor_by_name(name, trade):
+    """以廠商名 get-or-create（原始資料無 vendors 主檔時用）。冪等。"""
+    s = _srv(); ph = s._ph()
+    name = (name or '').strip()
+    if not name:
+        return None
+    row = s.fetchone(f"SELECT id FROM vendors_v3 WHERE name={ph}", (name,))
+    if row:
+        return row['id']
+    s.execute(f"INSERT INTO vendors_v3 (legacy_id,name,category_id) VALUES ({ph},{ph},{ph})",
+              ('vn-'+name, name, _cat_id('trade', trade)))
+    return s.last_insert_id()
+
+
 def _migrate_local(data):
     s = _srv(); ph = s._ph(); c = {}
-    # vendors
+    # vendors（若備份有主檔則用之；本專案備份 vendors 為空，改由付款/合約的
+    # vendorName 自動建立，見 _vendor_by_name）
     vmap = {}   # legacy vendor id -> new id
     for v in data.get('vendors', []):
         lid = str(v.get('id'))
@@ -225,37 +252,58 @@ def _migrate_local(data):
             (lid, pid, e.get('date',''), _cat_id('income_type', it),
              float(e.get('amount',0) or 0), 'received', e.get('description',e.get('note',''))))
         c['income_extra'] = c.get('income_extra',0)+1
-    # vendor-contracts -> contracts
+    # vendor-contracts -> contracts（vendorId 缺漏時以 vendorName 建立廠商；
+    # category 通用「工程」時從 vendorName 前綴回推工種）
     cmap = {}
     for vc in data.get('vendor-contracts', data.get('vcs', [])):
         lid = 'vc-'+str(vc.get('id'))
         row = s.fetchone(f"SELECT id FROM contracts WHERE legacy_id={ph}", (lid,))
         if row: cmap[str(vc.get('id'))] = row['id']; continue
         pid = pmap.get(str(vc.get('projectId')))
-        vid = vmap.get(str(vc.get('vendorId')))
-        cid = _cat_id('trade', vc.get('category',''))
+        trade = _trade_of(vc.get('vendorName',''), vc.get('category',''))
+        vid = vmap.get(str(vc.get('vendorId'))) or _vendor_by_name(vc.get('vendorName',''), trade)
+        cid = _cat_id('trade', trade)
         s.execute(f"""INSERT INTO contracts (legacy_id,project_id,vendor_id,category_id,amount,note)
             VALUES ({ph},{ph},{ph},{ph},{ph},{ph})""",
             (lid, pid, vid, cid, float(vc.get('contractTotal',0) or 0), vc.get('note','')))
         cmap[str(vc.get('id'))] = s.last_insert_id(); c['contracts'] = c.get('contracts',0)+1
     # vendor-payments -> expenses
+    vc_by_id = {str(x.get('id')): x for x in data.get('vendor-contracts', data.get('vcs', []))}
     for vp in data.get('vendor-payments', data.get('vps', [])):
         lid = 'vp-'+str(vp.get('id'))
         if s.fetchone(f"SELECT id FROM expenses WHERE legacy_id={ph}", (lid,)): continue
         pid = pmap.get(str(vp.get('projectId')))
         cnid = cmap.get(str(vp.get('vendorContractId')))
-        cid = _cat_id('trade', vp.get('category',''))
-        vid = None
-        vc = next((x for x in data.get('vendor-contracts',[]) if str(x.get('id'))==str(vp.get('vendorContractId'))), None)
-        if vc: vid = vmap.get(str(vc.get('vendorId')))
+        vc = vc_by_id.get(str(vp.get('vendorContractId')))
+        vname = vp.get('vendorName') or (vc.get('vendorName','') if vc else '')
+        trade = _trade_of(vname, vp.get('category',''))
+        cid = _cat_id('trade', trade)
+        vid = _vendor_by_name(vname, trade)
+        # vendor-payment = 已發生的付款；除非明確標未付，否則視為已付
+        vp_status = 'pending' if str(vp.get('status')) in ('待付','pending','未付') else 'paid'
         s.execute(f"""INSERT INTO expenses (legacy_id,project_id,category_id,vendor_id,
             contract_id,item,amount,date,status,invoice_no,payment_method,note)
             VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
             (lid, pid, cid, vid, cnid, vp.get('periodName',''),
              float(vp.get('amount',0) or 0)+float(vp.get('fee',0) or 0),
-             vp.get('date',''), 'paid' if vp.get('status') in ('已付','paid') else 'pending',
+             vp.get('date',''), vp_status,
              vp.get('invoiceNo',''), vp.get('paymentMethod',''), vp.get('note','')))
         c['expenses'] = c.get('expenses',0)+1
+    # pending-payments -> expenses(pending)（尚未付款的廠商帳單）
+    for pp in data.get('pending-payments', []):
+        lid = 'pp-'+str(pp.get('id'))
+        if s.fetchone(f"SELECT id FROM expenses WHERE legacy_id={ph}", (lid,)): continue
+        pid = pmap.get(str(pp.get('projectId')))
+        vname = pp.get('vendorName','')
+        trade = _trade_of(vname, pp.get('category',''))
+        vid = _vendor_by_name(vname, trade)
+        s.execute(f"""INSERT INTO expenses (legacy_id,project_id,category_id,vendor_id,
+            item,amount,date,due_date,status,payment_method,note)
+            VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},'pending',{ph},{ph})""",
+            (lid, pid, _cat_id('trade', trade), vid, pp.get('category',''),
+             float(pp.get('amount',0) or 0), '', pp.get('dueDate',''),
+             pp.get('paymentMethod',''), pp.get('note','')))
+        c['expenses_pending'] = c.get('expenses_pending',0)+1
     # purchases -> expenses（工種=材料採購）
     for pu in data.get('purchases', []):
         if pu.get('returned') == '是': continue
@@ -407,7 +455,10 @@ def reconcile(data):
     else:
         old_income = (_sum([p for p in data.get('periods',[]) if p.get('status')=='已收'])
                       + _extra_net(data.get('extra-works', data.get('extras',[]))))
-        old_exp = (_sum([v for v in data.get('vendor-payments', data.get('vps',[])) if v.get('status') in ('已付','paid')], extra='fee')
+        # 已付出 = 所有 vendor-payments（原系統視為已發生）+ 採購 + 公司支出；
+        # 明確標未付者不計（與 migration 一致）
+        old_exp = (_sum([v for v in data.get('vendor-payments', data.get('vps',[]))
+                         if str(v.get('status')) not in ('待付','pending','未付')], extra='fee')
                    + _sum([p for p in data.get('purchases',[]) if p.get('returned')!='是'])
                    + _sum(data.get('company-expenses', data.get('coExpenses',[]))))
     new_income = (s.fetchone("SELECT COALESCE(SUM(amount),0) v FROM income WHERE status='received'") or {}).get('v',0)
