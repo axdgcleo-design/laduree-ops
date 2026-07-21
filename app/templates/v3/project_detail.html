@@ -84,19 +84,24 @@
 </div>
 
 <!-- 支出明細（依工種分組）-->
+{% set pay = {'transfer':'轉帳','cash':'現金','check':'開票'} %}
 <div class="card" style="padding:0;overflow:hidden">
   <h3 style="padding:16px 18px 0">支出明細（依工種）· 合計 NT$ {{ fmt(d.exp_total) }}</h3>
   <table style="margin-top:10px">
-    <thead><tr><th>日期</th><th>工種</th><th>廠商</th><th>品項</th><th class="r">金額</th><th>發票</th><th>狀態</th></tr></thead>
+    <thead><tr><th>日期</th><th>廠商</th><th>品項</th><th>付款方式</th><th class="r">金額</th><th>發票</th><th>狀態</th></tr></thead>
     <tbody>
       {% for tname, items in d.grouped.items() %}
-      <tr class="grp"><td colspan="4">▎{{ tname }}（{{ items|length }} 筆）</td><td class="r mono">{{ fmt(items|sum(attribute='amount')) }}</td><td colspan="2"></td></tr>
+      {% set sub = items|sum(attribute='amount') %}
+      <tr class="grp">
+        <td colspan="4">▎{{ tname }}（{{ items|length }} 筆）{% if d.exp_total %} · 占成本 {{ '%.0f'|format(sub/d.exp_total*100) }}%{% endif %}</td>
+        <td class="r mono">{{ fmt(sub) }}</td><td colspan="2"></td>
+      </tr>
       {% for r in items %}
       <tr>
         <td class="mono" style="color:var(--mid)">{{ r.date or '—' }}</td>
-        <td style="color:var(--muted);font-size:12px">{{ r.trade_name or '' }}</td>
         <td style="font-weight:500">{{ r.vendor_name or '—' }}</td>
         <td style="color:var(--mid)">{{ r.item or '' }}</td>
+        <td style="color:var(--mid);font-size:12px">{{ pay.get(r.payment_method, r.payment_method) or '—' }}</td>
         <td class="r mono" style="font-weight:600">{{ fmt(r.amount) }}</td>
         <td>{% if r.invoice_no %}<span class="tag gr">{{ r.invoice_no }}</span>{% else %}<span style="color:var(--muted)">無</span>{% endif %}</td>
         <td>{% if r.status=='paid' %}<span class="tag gr">已付</span>{% else %}<span class="tag am">未付</span>{% endif %}</td>
