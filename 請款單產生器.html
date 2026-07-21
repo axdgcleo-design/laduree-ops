@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>漣一設計 — 請款單產生器</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --mid:#6b6560; --muted:#a09890; --line:#ddd8d0;
+    --red:#c44536; --cream:#f4f1ec; --green:#2d6a4f;
+    --blue:#1d4ed8; --blue-bg:#e0edff; --green-bg:#edf7f1; --amber:#8a6000; --amber-bg:#fdf6e3;
+    --bg:#e9e6e1; --sur:#fff; --b1:#e6e2db;
+    --sans:'Noto Sans TC','Microsoft JhengHei','PingFang TC',-apple-system,sans-serif;
+    --mono:'JetBrains Mono','Menlo','Consolas',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-style:normal}
+  body{font-family:var(--sans);color:var(--ink);background:var(--bg);font-size:13px;line-height:1.6}
+
+  /* ===== 編輯區（列印時隱藏） ===== */
+  .editor{max-width:920px;margin:0 auto;padding:20px 18px 60px}
+  .topbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .topbar h1{font-size:18px;font-weight:700}
+  .topbar .sp{flex:1}
+  .card{background:var(--sur);border:1px solid var(--b1);border-radius:10px;padding:16px 18px;margin-bottom:14px}
+  .card h2{font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+  .card h2 .hint{font-size:11px;color:var(--muted);font-weight:400}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid.g3{grid-template-columns:1fr 1fr 1fr}
+  .fg{display:flex;flex-direction:column;gap:3px}
+  .fg.full{grid-column:1/-1}
+  .fg label{font-size:11px;color:var(--muted);letter-spacing:.03em}
+  input,select{font-family:var(--sans);font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);outline:none;width:100%}
+  input:focus,select:focus{border-color:var(--green)}
+  input[readonly]{background:#f7f5f1;color:var(--mid)}
+  .btn{font-family:var(--sans);font-size:12.5px;padding:7px 13px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+  .btn:hover{background:#faf9f6}
+  .btn.p{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn.p:hover{background:#000}
+  .btn.red{background:var(--red);color:#fff;border-color:var(--red)}
+  .btn.sm{font-size:11.5px;padding:5px 9px}
+  .btn.gh{background:transparent;border-color:transparent;color:var(--mid)}
+  .btn.gh:hover{background:#f0ede8}
+
+  /* 期別表 */
+  .ptable{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+  .ptable th{font-size:10.5px;color:var(--muted);font-weight:500;text-align:left;padding:6px 5px;border-bottom:1px solid var(--line)}
+  .ptable td{padding:5px 5px;border-bottom:1px solid #f2efe9;vertical-align:middle}
+  .ptable input,.ptable select{font-size:12px;padding:5px 6px}
+  .ptable .num{text-align:right;font-family:var(--mono)}
+  .ptable .cur input{background:#fef6f4}
+  .delrow{color:var(--muted);cursor:pointer;font-size:15px;text-align:center;line-height:1}
+  .delrow:hover{color:var(--red)}
+  .curpick{width:16px;height:16px;cursor:pointer}
+  .sent-badge{font-size:10px;color:var(--green);white-space:nowrap}
+  .addrow{color:var(--blue);cursor:pointer;font-size:12.5px;padding:8px 0 2px;display:inline-flex;gap:4px;align-items:center}
+  .sumline{display:flex;justify-content:space-between;font-size:12px;padding:8px 5px 0;border-top:1px solid var(--ink);margin-top:6px}
+  .sumline .v{font-family:var(--mono);font-weight:600}
+  .proj-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:200;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.on{opacity:1}
+
+  /* ===== 請款單（列印） ===== */
+  .paper-wrap{background:var(--bg);padding:24px 12px 40px}
+  .page{width:210mm;min-height:297mm;margin:0 auto;padding:18mm 18mm 20mm;background:#fff;position:relative;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+  .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--ink);padding-bottom:1.1rem;margin-bottom:1.5rem}
+  .logo-en{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;letter-spacing:.08em;color:var(--ink)}
+  .co-info{font-size:11px;color:var(--muted);margin-top:.5rem;line-height:1.8;font-weight:300}
+  .doc-right{text-align:right}
+  .doc-title{font-size:11px;font-weight:500;letter-spacing:.2em;color:var(--ink)}
+  .doc-meta{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:5px;line-height:1.8}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem}
+  .mlabel{font-size:10px;letter-spacing:.12em;color:var(--muted);font-weight:500;margin-bottom:.25rem}
+  .mval{font-size:13px;color:var(--ink)}
+  .mval.lg{font-size:15px;font-weight:500}
+  .mval.sub{font-size:11px;color:var(--mid);margin-top:.15rem}
+  .sec-title{font-size:10px;letter-spacing:.12em;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:4px;margin-bottom:.85rem;margin-top:1.25rem}
+  .ptbl{width:100%;border-collapse:collapse;font-size:12px}
+  .ptbl th{text-align:left;font-size:9.5px;letter-spacing:.1em;color:var(--muted);font-weight:500;padding:.35rem .4rem;border-bottom:1px solid var(--line)}
+  .ptbl td{padding:.4rem .4rem;border-bottom:1px solid #f0ece6;color:var(--ink);vertical-align:middle}
+  .ptbl td:last-child{text-align:right;font-family:var(--mono);font-size:11.5px}
+  .ptbl tr:last-child td{border-bottom:none}
+  .row-paid td{color:var(--muted)} .row-paid td:last-child{color:var(--green)}
+  .row-cur td{font-weight:500}
+  .row-fut td{color:#c8c4be}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:middle}
+  .d-paid{background:var(--green)} .d-cur{background:var(--red)} .d-fut{background:var(--line)}
+  .pno{font-family:var(--mono);font-size:10px}
+  .pay-tag{font-size:10px;padding:1px 6px;border-radius:2px}
+  .pay-t{background:var(--blue-bg);color:var(--blue)} .pay-c{background:var(--green-bg);color:var(--green)} .pay-ch{background:var(--amber-bg);color:var(--amber)}
+  .subtotal{display:flex;justify-content:space-between;padding:.45rem .4rem;border-top:1px solid var(--ink);font-size:12px}
+  .stl{color:var(--mid);font-size:10px;letter-spacing:.08em}
+  .stv{font-family:var(--mono);font-weight:500;color:var(--green)}
+  .ablock{display:flex;justify-content:space-between;align-items:center;padding:.8rem 1rem;background:var(--cream);border-radius:2px;margin-top:.5rem}
+  .albl{font-size:10px;letter-spacing:.1em;color:var(--mid)}
+  .aval{font-family:var(--mono);font-size:15px;font-weight:500;color:var(--ink)}
+  .inv-row{display:flex;align-items:center;gap:.6rem;margin-top:.75rem}
+  .inv-lbl{font-size:10px;letter-spacing:.1em;color:var(--muted)}
+  .inv-no{font-family:var(--mono);font-size:13px;color:var(--ink);letter-spacing:.1em}
+  .fband{margin-top:1.5rem;padding-top:.85rem;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr auto;gap:1.5rem;align-items:end}
+  .fblbl{font-size:9.5px;letter-spacing:.12em;color:var(--muted);font-weight:500;margin-bottom:.3rem}
+  .fbrow{display:flex;gap:.6rem;font-size:11px;padding:.1rem 0}
+  .fbk{color:var(--muted);font-size:9.5px;min-width:26px}
+  .fbv{font-family:var(--mono);color:var(--ink)}
+  .pid{text-align:right}
+  .pidm{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--ink);letter-spacing:.05em}
+  .pids{font-size:9.5px;color:var(--muted);margin-top:.2rem}
+  .signs{display:grid;grid-template-columns:1fr 1fr;gap:3rem;margin-top:2rem}
+  .sign{border-top:1px solid var(--line);padding-top:.4rem;font-size:9.5px;letter-spacing:.1em;color:var(--muted)}
+  .note-line{font-size:12px;color:var(--mid);margin-bottom:.5rem}
+  .due-line{font-size:11px;color:var(--muted);margin-bottom:.5rem}
+
+  @media print{
+    .no-print{display:none!important}
+    body{background:#fff}
+    .paper-wrap{padding:0;background:#fff}
+    .page{box-shadow:none;margin:0;width:auto;min-height:auto;padding:15mm 15mm 18mm}
+    @page{size:A4;margin:0}
+  }
+  @media(max-width:600px){
+    .grid,.grid.g3{grid-template-columns:1fr}
+    .page{width:100%;padding:14px}
+    .ptable{font-size:11px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 編輯區 ============ -->
+<div class="editor no-print">
+  <div class="topbar">
+    <h1>漣一設計 · 請款單產生器</h1>
+    <span class="sp"></span>
+    <button class="btn" onclick="exportBackup()">📤 匯出備份</button>
+    <label class="btn" style="margin:0">📥 匯入備份<input type="file" accept=".json" style="display:none" onchange="importBackup(event)"></label>
+  </div>
+
+  <!-- 公司設定 -->
+  <div class="card">
+    <h2>公司資料 <span class="hint">（會印在請款單抬頭，填一次就好）</span>
+      <span class="sp" style="flex:1"></span>
+      <button class="btn sm gh" onclick="toggleCo()" id="co-toggle">收合 ▲</button>
+    </h2>
+    <div id="co-body">
+      <div class="grid">
+        <div class="fg"><label>公司名稱</label><input id="co-name" oninput="save()"></div>
+        <div class="fg"><label>英文抬頭（Logo 文字）</label><input id="co-nameen" oninput="save()"></div>
+        <div class="fg"><label>電話</label><input id="co-tel" oninput="save()"></div>
+        <div class="fg"><label>Email</label><input id="co-email" oninput="save()"></div>
+        <div class="fg"><label>統一編號</label><input id="co-taxid" oninput="save()"></div>
+        <div class="fg"><label>公司地址（選填）</label><input id="co-addr" oninput="save()"></div>
+      </div>
+      <h2 style="margin-top:16px">匯款資訊 <span class="hint">（請款單下方，業主匯款用）</span></h2>
+      <div class="grid g3">
+        <div class="fg"><label>銀行 / 分行</label><input id="co-bank" oninput="save()" placeholder="台灣銀行 信義分行"></div>
+        <div class="fg"><label>戶名</label><input id="co-bankname" oninput="save()"></div>
+        <div class="fg"><label>帳號</label><input id="co-bankacc" oninput="save()"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 專案 -->
+  <div class="card">
+    <h2>專案</h2>
+    <div class="proj-row" style="margin-bottom:12px">
+      <select id="proj-select" onchange="switchProj()" style="max-width:280px"></select>
+      <button class="btn sm" onclick="newProj()">＋ 新增專案</button>
+      <button class="btn sm gh" onclick="delProj()">刪除此專案</button>
+    </div>
+    <div class="grid">
+      <div class="fg"><label>案名</label><input id="p-name" oninput="save();renderInvoice()" placeholder="信義區 王宅"></div>
+      <div class="fg"><label>業主名稱</label><input id="p-client" oninput="save();renderInvoice()" placeholder="王先生"></div>
+      <div class="fg full"><label>業主地址（選填）</label><input id="p-addr" oninput="save();renderInvoice()"></div>
+      <div class="fg"><label>合約類型</label><select id="p-ctype" onchange="save();renderInvoice()"><option value="design">設計費合約</option><option value="construction">工程款合約</option></select></div>
+      <div class="fg"><label>合約總額（NT$）</label><input id="p-total" type="number" oninput="recalcRatios();save();renderInvoice()" placeholder="2000000"></div>
+    </div>
+  </div>
+
+  <!-- 期別 -->
+  <div class="card">
+    <h2>收款期別 <span class="hint">（填比例會自動算金額；也可直接改金額。勾選●=這張請款單的「本期」）</span></h2>
+    <table class="ptable">
+      <thead>
+        <tr>
+          <th style="width:24px">本期</th>
+          <th>期別說明</th>
+          <th style="width:56px">比例%</th>
+          <th style="width:90px">金額</th>
+          <th style="width:82px">收款方式</th>
+          <th style="width:74px">狀態</th>
+          <th style="width:110px">實收日</th>
+          <th style="width:110px">發票號碼</th>
+          <th style="width:120px">送出紀錄</th>
+          <th style="width:22px"></th>
+        </tr>
+      </thead>
+      <tbody id="prows"></tbody>
+    </table>
+    <span class="addrow" onclick="addRow()">＋ 新增一期</span>
+    <div class="sumline"><span>合計</span><span class="v" id="sum-total">NT$0</span></div>
+  </div>
+
+  <!-- 動作 -->
+  <div class="card">
+    <h2>產生請款單</h2>
+    <div class="proj-row">
+      <button class="btn p" onclick="window.print()">🖨️ 列印 / 儲存 PDF</button>
+      <button class="btn" onclick="markSent()">✅ 記錄為已送出業主</button>
+      <span style="font-size:11.5px;color:var(--muted)">下方就是這張請款單的即時預覽，內容會隨你上面輸入自動更新。</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 請款單 ============ -->
+<div class="paper-wrap">
+  <div class="page" id="invoice"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const fmt = n => Math.round(n||0).toLocaleString();
+const todayStr = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const KEY = 'laduree_invoice_v1';
+
+let DB = { company:{}, projects:[], sel:null };
+
+function defaultCompany(){
+  return { name:'漣一設計有限公司', name_en:'LA DURÉE', tel:'0975-602-433',
+           email:'laduree.design@gmail.com', tax_id:'83401776', address:'',
+           bank:'', bank_name:'', bank_acc:'' };
+}
+function blankProject(){
+  return { id:uid(), name:'', client:'', addr:'', ctype:'construction', total:0,
+           periods:[ newPeriod('第一期 — 簽約訂金', 30) ], curId:null };
+}
+function newPeriod(label, ratio){
+  return { id:uid(), label:label||'', ratio:ratio||0, amount:0, method:'transfer',
+           acc5:'', status:'pending', received:'', invno:'',
+           sent_date:'', sent_channel:'' };
+}
+
+/* ---------- 載入 / 儲存 ---------- */
+function load(){
+  try{ const raw=localStorage.getItem(KEY); if(raw) DB=JSON.parse(raw); }catch(e){}
+  if(!DB.company || !DB.company.name) DB.company = defaultCompany();
+  if(!DB.projects) DB.projects=[];
+  if(DB.projects.length===0){ const p=blankProject(); p.periods[0].amount=0; DB.projects.push(p); DB.sel=p.id; }
+  if(!DB.sel || !DB.projects.find(p=>p.id===DB.sel)) DB.sel=DB.projects[0].id;
+}
+function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){ alert('儲存失敗：'+e.message); } }
+function curProj(){ return DB.projects.find(p=>p.id===DB.sel); }
+
+/* ---------- 讀取畫面 → DB ---------- */
+function save(){
+  const c=DB.company;
+  c.name=val('co-name'); c.name_en=val('co-nameen'); c.tel=val('co-tel');
+  c.email=val('co-email'); c.tax_id=val('co-taxid'); c.address=val('co-addr');
+  c.bank=val('co-bank'); c.bank_name=val('co-bankname'); c.bank_acc=val('co-bankacc');
+  const p=curProj(); if(p){
+    p.name=val('p-name'); p.client=val('p-client'); p.addr=val('p-addr');
+    p.ctype=val('p-ctype'); p.total=num('p-total');
+  }
+  persist();
+}
+const val=id=>document.getElementById(id).value;
+const num=id=>parseFloat(document.getElementById(id).value)||0;
+
+/* ---------- DB → 畫面 ---------- */
+function fillForm(){
+  const c=DB.company;
+  set('co-name',c.name); set('co-nameen',c.name_en); set('co-tel',c.tel);
+  set('co-email',c.email); set('co-taxid',c.tax_id); set('co-addr',c.address);
+  set('co-bank',c.bank); set('co-bankname',c.bank_name); set('co-bankacc',c.bank_acc);
+  // 專案下拉
+  const sel=document.getElementById('proj-select');
+  sel.innerHTML = DB.projects.map(p=>`<option value="${p.id}">${(p.name||'(未命名專案)')} ｜ ${p.client||'—'}</option>`).join('');
+  sel.value=DB.sel;
+  const p=curProj();
+  set('p-name',p.name); set('p-client',p.client); set('p-addr',p.addr);
+  set('p-ctype',p.ctype); set('p-total',p.total||'');
+  renderRows();
+}
+const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v==null?'':v; };
+
+/* ---------- 期別列 ---------- */
+function renderRows(){
+  const p=curProj();
+  const tb=document.getElementById('prows');
+  const methods={transfer:'匯款',cash:'現金',check:'開票'};
+  tb.innerHTML = p.periods.map((r,i)=>{
+    const isCur = p.curId===r.id;
+    const sent = r.sent_date ? `<span class="sent-badge">已送出 ${r.sent_date}${r.sent_channel?' · '+r.sent_channel:''}</span>` : '<span style="color:#c8c4be;font-size:10px">—</span>';
+    return `<tr class="${isCur?'cur':''}">
+      <td style="text-align:center"><input class="curpick" type="radio" name="curpick" ${isCur?'checked':''} onchange="setCur('${r.id}')"></td>
+      <td><input value="${esc(r.label)}" oninput="upd(${i},'label',this.value)"></td>
+      <td><input class="num" type="number" value="${r.ratio||''}" oninput="upd(${i},'ratio',this.value)"></td>
+      <td><input class="num" type="number" value="${r.amount||''}" oninput="upd(${i},'amount',this.value,true)"></td>
+      <td><select onchange="upd(${i},'method',this.value)">
+        ${Object.entries(methods).map(([k,v])=>`<option value="${k}" ${r.method===k?'selected':''}>${v}</option>`).join('')}
+      </select></td>
+      <td><select onchange="upd(${i},'status',this.value)">
+        <option value="pending" ${r.status==='pending'?'selected':''}>待請款</option>
+        <option value="invoiced" ${r.status==='invoiced'?'selected':''}>已開單</option>
+        <option value="received" ${r.status==='received'?'selected':''}>已收款</option>
+      </select></td>
+      <td><input type="date" value="${r.received||''}" oninput="upd(${i},'received',this.value)"></td>
+      <td><input value="${esc(r.invno)}" oninput="upd(${i},'invno',this.value)" placeholder="AB-1234"></td>
+      <td>${sent}</td>
+      <td><span class="delrow" onclick="delRow(${i})">×</span></td>
+    </tr>`;
+  }).join('');
+  updSum();
+}
+const esc=s=>(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+
+function upd(i,k,v,manualAmt){
+  const p=curProj(); const r=p.periods[i];
+  if(k==='ratio'){ r.ratio=parseFloat(v)||0; r.amount=Math.round((p.total||0)*r.ratio/100); }
+  else if(k==='amount'){ r.amount=parseFloat(v)||0; }
+  else r[k]=v;
+  persist();
+  if(k==='ratio'||manualAmt) renderRows(); // 重算金額欄
+  updSum(); renderInvoice();
+}
+function recalcRatios(){ // 改總額時，用比例重算各期金額
+  const p=curProj(); p.total=num('p-total');
+  p.periods.forEach(r=>{ if(r.ratio) r.amount=Math.round(p.total*r.ratio/100); });
+  renderRows();
+}
+function updSum(){
+  const p=curProj();
+  const s=p.periods.reduce((a,r)=>a+(r.amount||0),0);
+  document.getElementById('sum-total').textContent='NT$'+fmt(s);
+}
+function setCur(id){ curProj().curId=id; persist(); renderRows(); renderInvoice(); }
+function addRow(){ const p=curProj(); p.periods.push(newPeriod('',0)); persist(); renderRows(); renderInvoice(); }
+function delRow(i){ const p=curProj(); if(p.periods.length<=1){toast('至少要保留一期');return;} const r=p.periods[i]; if(p.curId===r.id)p.curId=null; p.periods.splice(i,1); persist(); renderRows(); renderInvoice(); }
+
+/* ---------- 專案切換 ---------- */
+function switchProj(){ DB.sel=document.getElementById('proj-select').value; persist(); fillForm(); renderInvoice(); }
+function newProj(){ const p=blankProject(); DB.projects.push(p); DB.sel=p.id; persist(); fillForm(); renderInvoice(); toast('已新增專案'); }
+function delProj(){
+  if(DB.projects.length<=1){ toast('至少要保留一個專案'); return; }
+  if(!confirm('確定刪除「'+(curProj().name||'未命名專案')+'」？')) return;
+  DB.projects=DB.projects.filter(p=>p.id!==DB.sel); DB.sel=DB.projects[0].id;
+  persist(); fillForm(); renderInvoice();
+}
+
+/* ---------- 記錄送出 ---------- */
+function markSent(){
+  const p=curProj();
+  if(!p.curId){ toast('請先在期別表勾選「本期」'); return; }
+  const r=p.periods.find(x=>x.id===p.curId);
+  const date=prompt('送出日期（YYYY-MM-DD）', r.sent_date||todayStr());
+  if(date===null) return;
+  const ch=prompt('送出方式（LINE / Email / 紙本 / 其他）', r.sent_channel||'LINE');
+  if(ch===null) return;
+  r.sent_date=date.trim(); r.sent_channel=(ch||'').trim();
+  if(r.status==='pending') r.status='invoiced';
+  persist(); renderRows(); renderInvoice();
+  toast('已記錄：'+r.sent_date+(r.sent_channel?' · '+r.sent_channel:''));
+}
+
+/* ---------- 備份 ---------- */
+function exportBackup(){
+  const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='laduree-請款單備份-'+todayStr()+'.json'; a.click();
+}
+function importBackup(e){
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ DB=JSON.parse(rd.result); persist(); load(); fillForm(); renderInvoice(); toast('已匯入備份'); }catch(err){ alert('匯入失敗：'+err.message); } };
+  rd.readAsText(f); e.target.value='';
+}
+
+/* ---------- 請款單渲染 ---------- */
+function renderInvoice(){
+  const c=DB.company, p=curProj();
+  const periods=p.periods;
+  const cur = p.periods.find(x=>x.id===p.curId) || null;
+  const totalPeriods=periods.length;
+  const curNo = cur ? (periods.indexOf(cur)+1) : null;
+  const receivedSum=periods.filter(r=>r.status==='received').reduce((a,r)=>a+(r.amount||0),0);
+  const ctypeLabel = p.ctype==='design'?'設計費合約':'工程款合約';
+  const payTag=(r)=>{
+    if(r.method==='transfer') return `<span class="pay-tag pay-t">匯款${r.acc5?' *'+r.acc5:''}</span>`;
+    if(r.method==='cash') return `<span class="pay-tag pay-c">現金</span>`;
+    if(r.method==='check') return `<span class="pay-tag pay-ch">開票</span>`;
+    return '—';
+  };
+  const rows=periods.map((r,idx)=>{
+    const cls = r.status==='received'?'row-paid':(r.id===p.curId?'row-cur':'row-fut');
+    const dot = r.status==='received'?'d-paid':(r.id===p.curId?'d-cur':'d-fut');
+    return `<tr class="${cls}">
+      <td><span class="dot ${dot}"></span><span class="pno">第 ${idx+1} 期</span></td>
+      <td>${esc(r.label)||'—'}</td>
+      <td>${payTag(r)}</td>
+      <td style="font-family:var(--mono);font-size:11px">${r.received||'—'}</td>
+      <td>NT$ ${fmt(r.amount)}</td>
+    </tr>`;
+  }).join('');
+
+  const bankBlock = (c.bank||c.bank_name||c.bank_acc) ? `
+    <div class="fblbl">匯款資訊</div>
+    ${c.bank?`<div class="fbrow"><span class="fbk">銀行</span><span class="fbv">${esc(c.bank)}</span></div>`:''}
+    ${c.bank_name?`<div class="fbrow"><span class="fbk">戶名</span><span class="fbv">${esc(c.bank_name)}</span></div>`:''}
+    ${c.bank_acc?`<div class="fbrow"><span class="fbk">帳號</span><span class="fbv">${esc(c.bank_acc)}</span></div>`:''}` : '';
+
+  document.getElementById('invoice').innerHTML = `
+    <div class="hd">
+      <div class="logo-area">
+        <div class="logo-en">${esc(c.name_en)||'LA DURÉE'}</div>
+        <div class="co-info">
+          ${esc(c.name)}<br>
+          ${esc(c.tel)||''}${c.tel&&c.email?'　':''}${esc(c.email)||''}
+          ${c.tax_id?`<br>統一編號：${esc(c.tax_id)}`:''}
+          ${c.address?`<br>${esc(c.address)}`:''}
+        </div>
+      </div>
+      <div class="doc-right">
+        <div class="doc-title">請　款　單</div>
+        <div class="doc-meta">
+          開單日　${todayStr()}<br>
+          ${curNo?`第 ${curNo} 期，共 ${totalPeriods} 期`:`共 ${totalPeriods} 期`}
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div>
+        <div class="mlabel">致</div>
+        <div class="mval lg">${esc(p.client)||'—'}</div>
+        ${p.addr?`<div class="mval sub">${esc(p.addr)}</div>`:''}
+      </div>
+      <div>
+        <div class="mlabel">案名</div>
+        <div class="mval lg">${esc(p.name)||'—'}</div>
+        <div class="mval sub">${ctypeLabel} ｜合約總額 NT$ ${fmt(p.total)}</div>
+      </div>
+    </div>
+    ${cur&&cur.label?`<div class="note-line">說明：${esc(cur.label)}</div>`:''}
+    <div class="sec-title">各期明細</div>
+    <table class="ptbl">
+      <thead><tr><th>期次</th><th>說明</th><th>收款方式</th><th>實收日</th><th>金額</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="subtotal"><span class="stl">已收小計</span><span class="stv">NT$ ${fmt(receivedSum)}</span></div>
+    <div style="height:1px;background:var(--line);margin:.1rem 0"></div>
+    <div class="ablock">
+      <div class="albl">本期應付金額</div>
+      <div class="aval">NT$ ${fmt(cur?cur.amount:0)}</div>
+    </div>
+    ${cur&&cur.invno?`<div class="inv-row"><span class="inv-lbl">發票號碼</span><span class="inv-no">${esc(cur.invno)}</span></div>`:''}
+    <div class="fband">
+      <div>${bankBlock}</div>
+      <div class="pid">
+        <div class="pidm">${esc(p.name)||'—'}　${curNo||'-'} ／ ${totalPeriods} 期</div>
+        <div class="pids">${esc(c.name)}</div>
+      </div>
+    </div>
+    <div class="signs">
+      <div class="sign">開立人　${esc(c.name)}</div>
+      <div class="sign">業主確認簽章</div>
+    </div>`;
+}
+
+/* ---------- 其他 ---------- */
+function toggleCo(){
+  const b=document.getElementById('co-body'), t=document.getElementById('co-toggle');
+  if(b.style.display==='none'){ b.style.display=''; t.textContent='收合 ▲'; }
+  else { b.style.display='none'; t.textContent='展開 ▼'; }
+}
+let toastT;
+function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('on'),2000); }
+
+/* ---------- 啟動 ---------- */
+load(); fillForm(); renderInvoice();
+</script>
+</body>
+</html>
