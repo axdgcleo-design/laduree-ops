@@ -395,6 +395,11 @@ function renderInvoice(){
     if(r.method==='check') return `<span class="pay-tag pay-ch">開票</span>`;
     return '—';
   };
+  const statusTag=(r)=>{
+    if(r.status==='received') return `<span class="pay-tag" style="background:var(--green-bg);color:var(--green)">已收款</span>`;
+    if(r.status==='invoiced') return `<span class="pay-tag" style="background:var(--amber-bg);color:var(--amber)">已開單</span>`;
+    return `<span class="pay-tag" style="background:#f0ede8;color:var(--muted)">待收款</span>`;
+  };
   const rows=periods.map((r,idx)=>{
     const cls = r.status==='received'?'row-paid':(r.id===p.curId?'row-cur':'row-fut');
     const dot = r.status==='received'?'d-paid':(r.id===p.curId?'d-cur':'d-fut');
@@ -402,6 +407,7 @@ function renderInvoice(){
       <td><span class="dot ${dot}"></span><span class="pno">第 ${idx+1} 期</span></td>
       <td>${esc(r.label)||'—'}</td>
       <td>${payTag(r)}</td>
+      <td>${statusTag(r)}</td>
       <td style="font-family:var(--mono);font-size:11px">${r.received||'—'}</td>
       <td>NT$ ${fmt(r.amount)}</td>
     </tr>`;
@@ -447,15 +453,20 @@ function renderInvoice(){
     ${cur&&cur.label?`<div class="note-line">說明：${esc(cur.label)}</div>`:''}
     <div class="sec-title">各期明細</div>
     <table class="ptbl">
-      <thead><tr><th>期次</th><th>說明</th><th>收款方式</th><th>實收日</th><th>金額</th></tr></thead>
+      <thead><tr><th>期次</th><th>說明</th><th>收款方式</th><th>狀態</th><th>實收日</th><th>金額</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <div class="subtotal"><span class="stl">已收小計</span><span class="stv">NT$ ${fmt(receivedSum)}</span></div>
     <div style="height:1px;background:var(--line);margin:.1rem 0"></div>
-    <div class="ablock">
-      <div class="albl">本期應付金額</div>
-      <div class="aval">NT$ ${fmt(cur?cur.amount:0)}</div>
-    </div>
+    ${cur && cur.status==='received'
+      ? `<div class="ablock" style="background:var(--green-bg)">
+           <div class="albl" style="color:var(--green)">本期已收款 ✓${cur.received?'　'+cur.received:''}</div>
+           <div class="aval" style="color:var(--green)">NT$ ${fmt(cur.amount)}</div>
+         </div>`
+      : `<div class="ablock">
+           <div class="albl">本期應付金額</div>
+           <div class="aval">NT$ ${fmt(cur?cur.amount:0)}</div>
+         </div>`}
     ${cur&&cur.invno?`<div class="inv-row"><span class="inv-lbl">發票號碼</span><span class="inv-no">${esc(cur.invno)}</span></div>`:''}
     <div class="fband">
       <div>${bankBlock}</div>
