@@ -251,8 +251,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS company_info (
             id INTEGER PRIMARY KEY DEFAULT 1,
             name TEXT DEFAULT '漣一設計有限公司',
-            name_en TEXT DEFAULT 'LA DURÉE', tax_id TEXT DEFAULT '',
-            address TEXT DEFAULT '', tel TEXT DEFAULT '', email TEXT DEFAULT '',
+            name_en TEXT DEFAULT 'LA DURÉE', tax_id TEXT DEFAULT '83401776',
+            address TEXT DEFAULT '', tel TEXT DEFAULT '0975-602-433', email TEXT DEFAULT 'laduree.design@gmail.com',
             bank_name TEXT DEFAULT '', bank_account TEXT DEFAULT '',
             bank_account_name TEXT DEFAULT ''
         );
@@ -373,8 +373,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS company_info (
             id INTEGER PRIMARY KEY DEFAULT 1,
             name TEXT DEFAULT '漣一設計有限公司',
-            name_en TEXT DEFAULT 'LA DURÉE', tax_id TEXT DEFAULT '',
-            address TEXT DEFAULT '', tel TEXT DEFAULT '', email TEXT DEFAULT '',
+            name_en TEXT DEFAULT 'LA DURÉE', tax_id TEXT DEFAULT '83401776',
+            address TEXT DEFAULT '', tel TEXT DEFAULT '0975-602-433', email TEXT DEFAULT 'laduree.design@gmail.com',
             bank_name TEXT DEFAULT '', bank_account TEXT DEFAULT '',
             bank_account_name TEXT DEFAULT ''
         );
