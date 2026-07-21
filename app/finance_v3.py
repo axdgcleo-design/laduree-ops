@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   item TEXT DEFAULT '', amount REAL DEFAULT 0,
   date TEXT DEFAULT '', due_date TEXT DEFAULT '',
   status TEXT DEFAULT 'paid',               -- pending|paid
-  tax_rate REAL DEFAULT 0, invoice_no TEXT DEFAULT '',
+  tax_setting TEXT DEFAULT '', tax_rate REAL DEFAULT 0, invoice_no TEXT DEFAULT '',
   payment_method TEXT DEFAULT '', note TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now','localtime'))
 );
@@ -101,6 +101,7 @@ def init_v3():
         conn = psycopg2.connect(url); cur = conn.cursor()
         for stmt in DDL_PG.split(';'):
             if stmt.strip(): cur.execute(stmt)
+        cur.execute("ALTER TABLE expenses ADD COLUMN IF NOT EXISTS tax_setting TEXT DEFAULT ''")
         _seed_categories_pg(cur)
         conn.commit(); conn.close()
     else:
@@ -109,6 +110,9 @@ def init_v3():
         os.makedirs(os.path.join(base, 'data'), exist_ok=True)
         conn = sqlite3.connect(os.path.join(base, 'data', 'ops.db'))
         conn.executescript(DDL_SQLITE)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(expenses)")}
+        if 'tax_setting' not in cols:
+            conn.execute("ALTER TABLE expenses ADD COLUMN tax_setting TEXT DEFAULT ''")
         _seed_categories_sqlite(conn)
         conn.commit(); conn.close()
 
@@ -282,11 +286,11 @@ def _migrate_local(data):
         # vendor-payment = 已發生的付款；除非明確標未付，否則視為已付
         vp_status = 'pending' if str(vp.get('status')) in ('待付','pending','未付') else 'paid'
         s.execute(f"""INSERT INTO expenses (legacy_id,project_id,category_id,vendor_id,
-            contract_id,item,amount,date,status,invoice_no,payment_method,note)
-            VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+            contract_id,item,amount,date,status,tax_setting,invoice_no,payment_method,note)
+            VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
             (lid, pid, cid, vid, cnid, vp.get('periodName',''),
              float(vp.get('amount',0) or 0)+float(vp.get('fee',0) or 0),
-             vp.get('date',''), vp_status,
+             vp.get('date',''), vp_status, vp.get('taxSetting',''),
              vp.get('invoiceNo',''), vp.get('paymentMethod',''), vp.get('note','')))
         c['expenses'] = c.get('expenses',0)+1
     # pending-payments -> expenses(pending)（尚未付款的廠商帳單）
@@ -320,11 +324,12 @@ def _migrate_local(data):
         lid = 'ce-'+str(ce.get('id'))
         if s.fetchone(f"SELECT id FROM expenses WHERE legacy_id={ph}", (lid,)): continue
         s.execute(f"""INSERT INTO expenses (legacy_id,project_id,category_id,vendor_id,
-            item,amount,date,status,invoice_no,payment_method,note)
-            VALUES ({ph},NULL,{ph},NULL,{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+            item,amount,date,status,tax_setting,invoice_no,payment_method,note)
+            VALUES ({ph},NULL,{ph},NULL,{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
             (lid, _cat_id('company_expense', ce.get('category','其他')),
              ce.get('item',''), float(ce.get('amount',0) or 0), ce.get('date',''),
-             'paid', ce.get('invoiceNo',''), ce.get('paymentMethod',''), ce.get('note','')))
+             'paid', ce.get('taxSetting',''), ce.get('invoiceNo',''),
+             ce.get('paymentMethod',''), ce.get('note','')))
         c['expenses_company'] = c.get('expenses_company',0)+1
     s.commit()
     return c
@@ -386,35 +391,38 @@ def _migrate_flask(data):
         lid = 'fvp-'+str(vp.get('id'))
         if s.fetchone(f"SELECT id FROM expenses WHERE legacy_id={ph}", (lid,)): continue
         s.execute(f"""INSERT INTO expenses (legacy_id,project_id,category_id,vendor_id,
-            item,amount,date,status,invoice_no,payment_method,note)
-            VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+            item,amount,date,status,tax_setting,invoice_no,payment_method,note)
+            VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
             (lid, pmap.get(str(vp.get('project_id'))), _cat_id('trade', vp.get('category','')),
              vmap.get(str(vp.get('vendor_id'))), vp.get('period_name',''),
              float(vp.get('amount',0) or 0)+float(vp.get('fee',0) or 0), vp.get('date',''),
              'paid' if vp.get('status') in ('已付','paid') else 'pending',
-             vp.get('invoice_no',''), vp.get('payment_method',''), vp.get('note','')))
+             vp.get('tax_setting',''), vp.get('invoice_no',''),
+             vp.get('payment_method',''), vp.get('note','')))
         c['expenses'] = c.get('expenses',0)+1
     for vi in data.get('vendor_invoices', []):
         lid = 'fvi-'+str(vi.get('id'))
         if s.fetchone(f"SELECT id FROM expenses WHERE legacy_id={ph}", (lid,)): continue
         s.execute(f"""INSERT INTO expenses (legacy_id,project_id,vendor_id,item,amount,
-            date,due_date,status,invoice_no,payment_method,note)
-            VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+            date,due_date,status,tax_setting,invoice_no,payment_method,note)
+            VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
             (lid, pmap.get(str(vi.get('project_id'))), vmap.get(str(vi.get('vendor_id'))),
              vi.get('period_name',''), float(vi.get('amount',0) or 0),
              vi.get('paid_date',''), vi.get('due_date',''),
              'paid' if vi.get('status')=='paid' else 'pending',
-             vi.get('invoice_no',''), vi.get('payment_method',''), vi.get('note','')))
+             vi.get('tax_setting',''), vi.get('invoice_no',''),
+             vi.get('payment_method',''), vi.get('note','')))
         c['expenses_inv'] = c.get('expenses_inv',0)+1
     for ce in data.get('company_expenses', []):
         lid = 'fce-'+str(ce.get('id'))
         if s.fetchone(f"SELECT id FROM expenses WHERE legacy_id={ph}", (lid,)): continue
         s.execute(f"""INSERT INTO expenses (legacy_id,project_id,category_id,item,amount,
-            date,status,invoice_no,payment_method,note)
-            VALUES ({ph},NULL,{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
+            date,status,tax_setting,invoice_no,payment_method,note)
+            VALUES ({ph},NULL,{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})""",
             (lid, _cat_id('company_expense', ce.get('category','其他')), ce.get('item',''),
              float(ce.get('amount',0) or 0), ce.get('date',''), 'paid',
-             ce.get('invoice_no',''), ce.get('payment_method',''), ce.get('note','')))
+             ce.get('tax_setting',''), ce.get('invoice_no',''),
+             ce.get('payment_method',''), ce.get('note','')))
         c['expenses_company'] = c.get('expenses_company',0)+1
     for e in data.get('extra_works', []):
         lid = 'fex-'+str(e.get('id'))
