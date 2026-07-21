@@ -53,6 +53,13 @@ def v3_projects():
     return render_template('v3/projects.html', active='projects',
         rows=A.project_rows(), fmt=fmt)
 
+@bp.route('/v3/project/<int:pid>')
+def v3_project_detail(pid):
+    d = A.project_detail(pid)
+    if not d:
+        return render_template('v3/base.html', active='projects'), 404
+    return render_template('v3/project_detail.html', active='projects', d=d, fmt=fmt)
+
 @bp.route('/v3/vendors')
 def v3_vendors():
     return render_template('v3/vendors.html', active='vendors',

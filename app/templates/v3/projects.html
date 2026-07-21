@@ -13,7 +13,7 @@
   <tbody>
     {% for p in rows %}
     <tr>
-      <td style="font-weight:600">{{ p.name }}</td>
+      <td style="font-weight:600"><a href="/v3/project/{{ p.id }}" style="border-bottom:1px solid var(--line)">{{ p.name }}</a></td>
       <td style="color:var(--mid)">{{ p.client_name or '—' }}</td>
       <td><span class="tag {{ 'bl' if p.status=='active' }}">{{ {'active':'施工中','lead':'設計中','completed':'完工','paused':'暫停'}.get(p.status,p.status) }}</span></td>
       <td class="r mono">{{ fmt(p.design_fee) }}</td>

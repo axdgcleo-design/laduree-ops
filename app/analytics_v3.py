@@ -15,24 +15,57 @@ def _all(sql, params=()):
 # ── 專案 ──────────────────────────────────────────────────────────────
 def project_rows():
     """每專案：合約/追加/減項/工程總價/已收未收/已付未付/預估實際成本/毛利。"""
+    return [_summary(p) for p in
+            _all("SELECT * FROM projects_v3 ORDER BY created_at DESC, id DESC")]
+
+def _summary(p):
+    """單一專案的金額彙整（收支/成本/毛利），供列表與詳情共用。"""
+    s = _srv(); ph = s._ph(); pid = p['id']
+    add = _one(f"SELECT COALESCE(SUM(i.amount),0) v FROM income i JOIN categories c ON i.type_id=c.id WHERE i.project_id={ph} AND c.name='追加款'", (pid,))
+    ded = _one(f"SELECT COALESCE(SUM(i.amount),0) v FROM income i JOIN categories c ON i.type_id=c.id WHERE i.project_id={ph} AND c.name='減項'", (pid,))
+    recv = _one(f"SELECT COALESCE(SUM(amount),0) v FROM income WHERE project_id={ph} AND status='received'", (pid,))
+    pend = _one(f"SELECT COALESCE(SUM(amount),0) v FROM income WHERE project_id={ph} AND status='pending'", (pid,))
+    paid = _one(f"SELECT COALESCE(SUM(amount),0) v FROM expenses WHERE project_id={ph} AND status='paid'", (pid,))
+    unpaid = _one(f"SELECT COALESCE(SUM(amount),0) v FROM expenses WHERE project_id={ph} AND status='pending'", (pid,))
+    budget = _one(f"SELECT COALESCE(SUM(amount),0) v FROM contracts WHERE project_id={ph}", (pid,))
+    base = (p['design_fee'] or 0) + (p['construction_contract'] or 0) + add - ded
+    # 舊案未輸入業主合約金額時，以「已收＋未收」作為工程總價的估算值
+    price_est = base <= 0
+    total_price = base if not price_est else (recv + pend)
+    profit = recv - paid
+    return {**p, 'add': add, 'deduct': ded, 'total_price': total_price, 'price_est': price_est,
+            'received': recv, 'pending': pend, 'paid': paid, 'unpaid': unpaid,
+            'budget': budget, 'actual_cost': paid, 'profit': profit,
+            'margin': (profit / recv * 100) if recv else 0,
+            'recv_pct': (recv / total_price * 100) if total_price else 0,
+            'cost_pct': (paid / budget * 100) if budget else 0}
+
+def project_detail(pid):
     s = _srv(); ph = s._ph()
-    out = []
-    for p in _all("SELECT * FROM projects_v3 ORDER BY created_at DESC, id DESC"):
-        pid = p['id']
-        add = _one(f"SELECT COALESCE(SUM(i.amount),0) v FROM income i JOIN categories c ON i.type_id=c.id WHERE i.project_id={ph} AND c.name='追加款'", (pid,))
-        ded = _one(f"SELECT COALESCE(SUM(i.amount),0) v FROM income i JOIN categories c ON i.type_id=c.id WHERE i.project_id={ph} AND c.name='減項'", (pid,))
-        recv = _one(f"SELECT COALESCE(SUM(amount),0) v FROM income WHERE project_id={ph} AND status='received'", (pid,))
-        pend = _one(f"SELECT COALESCE(SUM(amount),0) v FROM income WHERE project_id={ph} AND status='pending'", (pid,))
-        paid = _one(f"SELECT COALESCE(SUM(amount),0) v FROM expenses WHERE project_id={ph} AND status='paid'", (pid,))
-        unpaid = _one(f"SELECT COALESCE(SUM(amount),0) v FROM expenses WHERE project_id={ph} AND status='pending'", (pid,))
-        budget = _one(f"SELECT COALESCE(SUM(amount),0) v FROM contracts WHERE project_id={ph}", (pid,))
-        total_price = (p['design_fee'] or 0) + (p['construction_contract'] or 0) + add - ded
-        profit = recv - paid
-        out.append({**p, 'add': add, 'deduct': ded, 'total_price': total_price,
-                    'received': recv, 'pending': pend, 'paid': paid, 'unpaid': unpaid,
-                    'budget': budget, 'actual_cost': paid, 'profit': profit,
-                    'margin': (profit / recv * 100) if recv else 0})
-    return out
+    p = s.fetchone(f"SELECT * FROM projects_v3 WHERE id={ph}", (pid,))
+    if not p:
+        return None
+    summ = _summary(p)
+    income = _all(f"""SELECT i.*, c.name type_name FROM income i
+        LEFT JOIN categories c ON i.type_id=c.id WHERE i.project_id={ph}
+        ORDER BY i.status, i.due_date""", (pid,))
+    exp = _all(f"""SELECT e.*, v.name vendor_name, c.name trade_name FROM expenses e
+        LEFT JOIN vendors_v3 v ON e.vendor_id=v.id
+        LEFT JOIN categories c ON e.category_id=c.id
+        WHERE e.project_id={ph} ORDER BY e.date DESC""", (pid,))
+    grouped = {}
+    for r in exp:
+        grouped.setdefault(r.get('trade_name') or '未分類', []).append(r)
+    grouped = dict(sorted(grouped.items(), key=lambda kv: -sum(x['amount'] for x in kv[1])))
+    contracts = _all(f"""SELECT ct.*, v.name vendor_name, c.name trade_name,
+        (SELECT COALESCE(SUM(amount),0) FROM expenses e WHERE e.contract_id=ct.id AND e.status='paid') paid
+        FROM contracts ct LEFT JOIN vendors_v3 v ON ct.vendor_id=v.id
+        LEFT JOIN categories c ON ct.category_id=c.id
+        WHERE ct.project_id={ph} ORDER BY ct.amount DESC""", (pid,))
+    for c in contracts:
+        c['remain'] = (c['amount'] or 0) - (c['paid'] or 0)
+    return {'p': summ, 'income': income, 'grouped': grouped, 'contracts': contracts,
+            'exp_total': sum(r['amount'] for r in exp)}
 
 # ── Dashboard ─────────────────────────────────────────────────────────
 def dashboard(year=None, month=None):

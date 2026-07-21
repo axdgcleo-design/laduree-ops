@@ -1,0 +1,110 @@
+{% extends 'v3/base.html' %}
+{% set p = d.p %}
+{% block title %}{{ p.name }} — Ladurée 財務{% endblock %}
+{% block body %}
+<div style="font-size:12px;color:var(--mid);margin-bottom:10px"><a href="/v3/projects" style="color:var(--mid)">← 專案</a> / {{ p.name }}</div>
+<div class="head">
+  <div>
+    <div class="h1">{{ p.name }}
+      <span class="tag {{ 'bl' if p.status=='active' }}" style="font-size:12px;vertical-align:middle;margin-left:6px">{{ {'active':'施工中','lead':'設計中','completed':'完工','paused':'暫停'}.get(p.status,p.status) }}</span>
+    </div>
+    <div class="sub">
+      {{ p.client_name or '—' }}
+      {% if p.address %} · {{ p.address }}{% endif %}
+      {% if p.start_date %} · 開工 {{ p.start_date }}{% endif %}
+      {% if p.end_date %} · 完工 {{ p.end_date }}{% endif %}
+    </div>
+  </div>
+  <div style="text-align:right">
+    <div class="sub" style="margin:0">毛利 / 毛利率</div>
+    <div class="mono {{ 'g' if p.profit>=0 else 'r' }}" style="font-size:24px;font-weight:700">NT$ {{ fmt(p.profit) }} <span style="font-size:15px">({{ '%.0f'|format(p.margin) }}%)</span></div>
+  </div>
+</div>
+
+<div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+  <div class="kpi"><div class="l">工程總價</div><div class="v mono">{{ fmt(p.total_price) }}</div><div class="s">{% if p.price_est %}＝已收＋未收（合約未輸入）{% else %}設計{{ fmt(p.design_fee) }} + 工程{{ fmt(p.construction_contract) }}{% if p.add %} + 追加{{ fmt(p.add) }}{% endif %}{% endif %}</div></div>
+  <div class="kpi"><div class="l">已收 / 未收</div><div class="v mono"><span class="g">{{ fmt(p.received) }}</span> <span class="s" style="font-size:13px">/ {{ fmt(p.pending) }}</span></div><div class="s">收款進度 {{ '%.0f'|format(p.recv_pct) }}%</div></div>
+  <div class="kpi"><div class="l">已付 / 未付</div><div class="v mono"><span class="r">{{ fmt(p.paid) }}</span> <span class="s" style="font-size:13px">/ {{ fmt(p.unpaid) }}</span></div><div class="s">實際成本</div></div>
+  <div class="kpi"><div class="l">預估成本（發包）</div><div class="v mono a">{{ fmt(p.budget) }}</div><div class="s">成本執行 {{ '%.0f'|format(p.cost_pct) }}%</div></div>
+</div>
+
+<div class="card">
+  <div style="display:flex;gap:26px;flex-wrap:wrap">
+    <div style="flex:1;min-width:240px">
+      <div class="sub" style="margin-bottom:6px">收款進度 {{ fmt(p.received) }} / {{ fmt(p.total_price) }}</div>
+      <div class="bar-track" style="height:20px"><div class="bar-fill gr" style="width:{{ [p.recv_pct,100]|min|round(1) }}%"></div></div>
+    </div>
+    <div style="flex:1;min-width:240px">
+      <div class="sub" style="margin-bottom:6px">成本執行 {{ fmt(p.paid) }} / 預估 {{ fmt(p.budget) }}</div>
+      <div class="bar-track" style="height:20px"><div class="bar-fill {{ 'rd' if p.cost_pct>100 else 'am' }}" style="width:{{ [p.cost_pct,100]|min|round(1) }}%"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="grid2">
+  <!-- 收入明細 -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <h3 style="padding:16px 18px 0">收入明細（請款期數）</h3>
+    <table style="margin-top:10px">
+      <thead><tr><th>應收日</th><th>期數/說明</th><th>類型</th><th class="r">金額</th><th>狀態</th></tr></thead>
+      <tbody>
+        {% for i in d.income %}
+        <tr>
+          <td class="mono" style="color:var(--mid)">{{ i.due_date or '—' }}</td>
+          <td style="color:var(--mid)">{{ i.note or ('第'~i.period_no~'期') }}</td>
+          <td><span class="tag bl">{{ i.type_name }}</span></td>
+          <td class="r mono" style="font-weight:600">{{ fmt(i.amount) }}</td>
+          <td>{% if i.status=='received' %}<span class="tag gr">已收</span>{% else %}<span class="tag am">未收</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        {% if not d.income %}<tr><td colspan="5" class="empty">尚無收入</td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 發包合約 vs 實際 -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <h3 style="padding:16px 18px 0">發包合約 vs 已付（防超付）</h3>
+    <table style="margin-top:10px">
+      <thead><tr><th>工種</th><th>廠商</th><th class="r">合約</th><th class="r">已付</th><th class="r">剩餘</th></tr></thead>
+      <tbody>
+        {% for c in d.contracts %}
+        <tr>
+          <td><span class="tag">{{ c.trade_name or '—' }}</span></td>
+          <td>{{ c.vendor_name or '—' }}</td>
+          <td class="r mono">{{ fmt(c.amount) }}</td>
+          <td class="r mono">{{ fmt(c.paid) }}</td>
+          <td class="r mono {{ 'r' if c.remain<0 else '' }}">{{ fmt(c.remain) }}</td>
+        </tr>
+        {% endfor %}
+        {% if not d.contracts %}<tr><td colspan="5" class="empty">尚無發包合約</td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 支出明細（依工種分組）-->
+<div class="card" style="padding:0;overflow:hidden">
+  <h3 style="padding:16px 18px 0">支出明細（依工種）· 合計 NT$ {{ fmt(d.exp_total) }}</h3>
+  <table style="margin-top:10px">
+    <thead><tr><th>日期</th><th>工種</th><th>廠商</th><th>品項</th><th class="r">金額</th><th>發票</th><th>狀態</th></tr></thead>
+    <tbody>
+      {% for tname, items in d.grouped.items() %}
+      <tr class="grp"><td colspan="4">▎{{ tname }}（{{ items|length }} 筆）</td><td class="r mono">{{ fmt(items|sum(attribute='amount')) }}</td><td colspan="2"></td></tr>
+      {% for r in items %}
+      <tr>
+        <td class="mono" style="color:var(--mid)">{{ r.date or '—' }}</td>
+        <td style="color:var(--muted);font-size:12px">{{ r.trade_name or '' }}</td>
+        <td style="font-weight:500">{{ r.vendor_name or '—' }}</td>
+        <td style="color:var(--mid)">{{ r.item or '' }}</td>
+        <td class="r mono" style="font-weight:600">{{ fmt(r.amount) }}</td>
+        <td>{% if r.invoice_no %}<span class="tag gr">{{ r.invoice_no }}</span>{% else %}<span style="color:var(--muted)">無</span>{% endif %}</td>
+        <td>{% if r.status=='paid' %}<span class="tag gr">已付</span>{% else %}<span class="tag am">未付</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+      {% if not d.grouped %}<tr><td colspan="7" class="empty">尚無支出</td></tr>{% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
