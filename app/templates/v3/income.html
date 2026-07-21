@@ -1,0 +1,49 @@
+{% extends 'v3/base.html' %}
+{% block title %}收入 — Ladurée 財務{% endblock %}
+{% block body %}
+<div class="head">
+  <div><div class="h1">收入管理</div><div class="sub">業主請款、追加款、退款統一管理</div></div>
+  <div style="text-align:right">
+    <div class="mono g" style="font-size:20px;font-weight:700">已收 NT$ {{ fmt(recv) }}</div>
+    <div class="sub" style="margin:0">合計 NT$ {{ fmt(total) }}</div>
+  </div>
+</div>
+
+<form class="filters" method="get">
+  <select name="project" onchange="this.form.submit()">
+    <option value="">全部專案</option>
+    {% for p in opts.projects %}<option value="{{ p.id }}" {{ 'selected' if args.get('project')==p.id|string }}>{{ p.name }}</option>{% endfor %}
+  </select>
+  <select name="type" onchange="this.form.submit()">
+    <option value="">全部類型</option>
+    {% for t in opts.income_types %}<option value="{{ t.id }}" {{ 'selected' if args.get('type')==t.id|string }}>{{ t.name }}</option>{% endfor %}
+  </select>
+  <select name="status" onchange="this.form.submit()">
+    <option value="">全部狀態</option>
+    <option value="received" {{ 'selected' if args.get('status')=='received' }}>已收</option>
+    <option value="pending" {{ 'selected' if args.get('status')=='pending' }}>未收</option>
+  </select>
+  <button class="btn p">套用</button>
+</form>
+
+<div class="card" style="padding:0;overflow:hidden">
+<table>
+  <thead><tr><th>應收日</th><th>專案</th><th>期數 / 說明</th><th>類型</th><th class="r">金額</th><th>銀行</th><th>狀態</th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="mono" style="color:var(--mid)">{{ r.due_date or '—' }}</td>
+      <td style="font-weight:500">{{ r.project_name or '—' }}</td>
+      <td style="color:var(--mid)">{{ r.note or ('第'~r.period_no~'期' if r.period_no) or '' }}</td>
+      <td><span class="tag bl">{{ r.type_name or '—' }}</span></td>
+      <td class="r mono" style="font-weight:600">{{ fmt(r.amount) }}</td>
+      <td class="mono" style="color:var(--muted);font-size:12px">{{ r.bank_account or '—' }}</td>
+      <td>{% if r.status=='received' %}<span class="tag gr">已收</span>{% else %}<span class="tag am">未收</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% if not rows %}<tr><td colspan="7" class="empty">沒有符合條件的收入</td></tr>{% endif %}
+  </tbody>
+  <tfoot><tr><td colspan="4">合計 {{ rows|length }} 筆</td><td class="r mono">NT$ {{ fmt(total) }}</td><td colspan="2"></td></tr></tfoot>
+</table>
+</div>
+{% endblock %}

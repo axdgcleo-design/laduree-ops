@@ -1,0 +1,76 @@
+{% extends 'v3/base.html' %}
+{% block title %}總覽 — Ladurée 財務{% endblock %}
+{% block body %}
+<div class="head">
+  <div>
+    <div class="h1">財務總覽</div>
+    <div class="sub">{{ year }} 年 {{ month }} 月 · 資料由核心表即時計算</div>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="l">本月收入</div><div class="v g mono">{{ fmt(d.month_income) }}</div><div class="s">NT$</div></div>
+  <div class="kpi"><div class="l">本月支出</div><div class="v r mono">{{ fmt(d.month_expense) }}</div><div class="s">NT$</div></div>
+  <div class="kpi"><div class="l">本月毛利</div><div class="v mono {{ 'g' if d.month_profit>=0 else 'r' }}">{{ fmt(d.month_profit) }}</div><div class="s">毛利率 {{ '%.0f'|format(d.month_margin) }}%</div></div>
+  <div class="kpi"><div class="l">未收款</div><div class="v a mono">{{ fmt(d.unreceived) }}</div><div class="s">應收</div></div>
+  <div class="kpi"><div class="l">未付款</div><div class="v a mono">{{ fmt(d.unpaid) }}</div><div class="s">應付</div></div>
+  <div class="kpi"><div class="l">專案數</div><div class="v mono">{{ d.total_projects }}</div><div class="s">施工 {{ d.active }} · 設計 {{ d.lead }}</div></div>
+  <div class="kpi"><div class="l">今年收入</div><div class="v g mono">{{ fmt(d.year_income) }}</div><div class="s">{{ year }} 累計</div></div>
+  <div class="kpi"><div class="l">今年成本</div><div class="v r mono">{{ fmt(d.year_cost) }}</div><div class="s">{{ year }} 累計</div></div>
+  <div class="kpi"><div class="l">今年毛利</div><div class="v mono {{ 'g' if d.year_profit>=0 else 'r' }}">{{ fmt(d.year_profit) }}</div><div class="s">{{ year }} 累計</div></div>
+  <div class="kpi"><div class="l">施工中案件</div><div class="v b mono">{{ d.active }}</div><div class="s">active</div></div>
+  <div class="kpi"><div class="l">設計中案件</div><div class="v mono">{{ d.lead }}</div><div class="s">lead</div></div>
+  <div class="kpi"><div class="l">已完工</div><div class="v mono">{{ d.completed }}</div><div class="s">completed</div></div>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h3>每月收入 / 支出 / 毛利（{{ year }}）</h3>
+    {% set mx = (months|map(attribute='income')|max, months|map(attribute='expense')|max)|max or 1 %}
+    <div class="cols">
+      {% for m in months %}
+      <div class="col" title="{{ m.m }}月 收入{{ fmt(m.income) }} 支出{{ fmt(m.expense) }}">
+        <div style="display:flex;gap:2px;align-items:flex-end;height:100%;width:80%">
+          <div style="flex:1;background:var(--green);border-radius:3px 3px 0 0;height:{{ (m.income/mx*100)|round(1) }}%"></div>
+          <div style="flex:1;background:var(--red);border-radius:3px 3px 0 0;height:{{ (m.expense/mx*100)|round(1) }}%"></div>
+        </div>
+        <small>{{ m.m }}</small>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="legend"><span><i style="background:var(--green)"></i>收入</span><span><i style="background:var(--red)"></i>支出</span></div>
+  </div>
+
+  <div class="card">
+    <h3>工種成本比例（今年）</h3>
+    {% set tmax = trades[0].total if trades else 1 %}
+    {% for t in trades[:8] %}
+    <div class="bar-row">
+      <span>{{ t.name }}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:{{ (t.total/tmax*100)|round(1) }}%"></div></div>
+      <span class="r mono">{{ fmt(t.total) }}</span>
+    </div>
+    {% endfor %}
+    {% if not trades %}<div class="empty">尚無支出資料</div>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h3>專案毛利排行</h3>
+  <table>
+    <thead><tr><th>專案</th><th>狀態</th><th class="r">已收</th><th class="r">實際成本</th><th class="r">毛利</th><th class="r">毛利率</th></tr></thead>
+    <tbody>
+      {% for p in projects|sort(attribute='profit', reverse=true) %}
+      <tr>
+        <td style="font-weight:600">{{ p.name }}</td>
+        <td><span class="tag {{ 'bl' if p.status=='active' else '' }}">{{ {'active':'施工中','lead':'設計中','completed':'完工','paused':'暫停'}.get(p.status, p.status) }}</span></td>
+        <td class="r mono g">{{ fmt(p.received) }}</td>
+        <td class="r mono r">{{ fmt(p.actual_cost) }}</td>
+        <td class="r mono {{ 'g' if p.profit>=0 else 'r' }}">{{ fmt(p.profit) }}</td>
+        <td class="r mono">{{ '%.0f'|format(p.margin) }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

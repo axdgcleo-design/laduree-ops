@@ -1,0 +1,22 @@
+{% extends 'v3/base.html' %}
+{% block title %}廠商 — Ladurée 財務{% endblock %}
+{% block body %}
+<div class="head"><div><div class="h1">廠商分析</div><div class="sub">合作案件數、合作總金額、未付款</div></div></div>
+<div class="card" style="padding:0;overflow:hidden">
+<table>
+  <thead><tr><th>廠商</th><th class="r">合作案件</th><th class="r">付款筆數</th><th class="r">已付總額</th><th class="r">未付款</th></tr></thead>
+  <tbody>
+    {% for v in rows %}
+    <tr>
+      <td style="font-weight:600">{{ v.name }}</td>
+      <td class="r mono">{{ v.projects }}</td>
+      <td class="r mono" style="color:var(--mid)">{{ v.cnt }}</td>
+      <td class="r mono">{{ fmt(v.paid) }}</td>
+      <td class="r mono {{ 'r' if v.unpaid }}">{{ fmt(v.unpaid) if v.unpaid else '—' }}</td>
+    </tr>
+    {% endfor %}
+    {% if not rows %}<tr><td colspan="5" class="empty">尚無廠商資料</td></tr>{% endif %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
