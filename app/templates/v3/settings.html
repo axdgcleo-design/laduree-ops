@@ -1,0 +1,101 @@
+{% extends 'v3/base.html' %}
+{% block title %}設定 — Ladurée 財務{% endblock %}
+{% block body %}
+<div class="head"><div><div class="h1">設定</div><div class="sub">匯入舊資料 · 工種與類型字典管理</div></div></div>
+
+<!-- 目前資料量 -->
+<div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+  <div class="kpi"><div class="l">專案</div><div class="v mono">{{ counts.projects_v3 }}</div></div>
+  <div class="kpi"><div class="l">收入</div><div class="v mono">{{ counts.income }}</div></div>
+  <div class="kpi"><div class="l">支出</div><div class="v mono">{{ counts.expenses }}</div></div>
+  <div class="kpi"><div class="l">廠商</div><div class="v mono">{{ counts.vendors_v3 }}</div></div>
+  <div class="kpi"><div class="l">發包合約</div><div class="v mono">{{ counts.contracts }}</div></div>
+</div>
+
+<!-- 匯入舊資料 -->
+<div class="card">
+  <h3>匯入舊資料（JSON 備份）</h3>
+  <p style="color:var(--mid);font-size:13px;margin-bottom:14px">
+    選擇你從舊系統匯出的 <b>.json</b> 備份檔。支援 localStorage 版與 Flask v2.0 版，
+    <b>可重複匯入不會重複</b>（以來源 ID 去重）。匯入後會顯示新舊總額對帳。
+  </p>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <input type="file" id="import-file" accept=".json,application/json">
+    <button class="btn p" onclick="doImport()">開始匯入</button>
+    <span id="import-status" style="font-size:13px;color:var(--mid)"></span>
+  </div>
+  <div id="reconcile-box" class="hide" style="margin-top:16px;background:var(--cream);border-radius:8px;padding:14px 16px">
+    <div style="font-size:12px;color:var(--mid);margin-bottom:8px">新舊總額對帳</div>
+    <table style="background:transparent">
+      <thead><tr><th>項目</th><th class="r">舊系統</th><th class="r">新資料庫</th><th class="r">差異</th></tr></thead>
+      <tbody id="reconcile-rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 工種 / 類型字典 -->
+{% set labels = {'trade':'工種', 'income_type':'收入類型', 'company_expense':'公司費用類別'} %}
+<div class="grid2" style="grid-template-columns:1fr 1fr 1fr">
+  {% for kind, items in cats.items() %}
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px 8px">
+      <h3 style="margin:0">{{ labels[kind] }}（{{ items|length }}）</h3>
+      <button class="btn" onclick="addCat('{{ kind }}')">＋ 新增</button>
+    </div>
+    <table>
+      <tbody>
+        {% for c in items %}
+        <tr id="cat-{{ c.id }}">
+          <td>{{ c.name }}</td>
+          <td class="r" style="width:80px">
+            <span class="iconbtn" onclick="renameCat({{ c.id }}, '{{ c.name }}')">改名</span>
+            <span class="iconbtn" style="color:var(--red)" onclick="delCat({{ c.id }})">刪</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function doImport(){
+  const f = document.getElementById('import-file').files[0];
+  const st = document.getElementById('import-status');
+  if(!f){ alert('請先選擇 JSON 檔'); return; }
+  st.textContent = '讀取中…';
+  let data;
+  try { data = JSON.parse(await f.text()); }
+  catch(e){ st.textContent=''; alert('檔案不是有效的 JSON'); return; }
+  st.textContent = '匯入中…';
+  const j = await api('/api/v3/migrate-legacy', 'POST', data);
+  if(!j){ st.textContent=''; return; }
+  const imp = Object.entries(j.imported||{}).map(([k,v])=>`${k} ${v}`).join('、') || '無新資料';
+  st.textContent = '完成：' + imp;
+  const rec = j.reconcile;
+  if(rec){
+    const fmtN = n => 'NT$ ' + Number(n).toLocaleString();
+    const cls = d => d===0 ? '' : 'style="color:var(--red)"';
+    document.getElementById('reconcile-rows').innerHTML =
+      `<tr><td>收入（已收）</td><td class="r mono">${fmtN(rec.income.old)}</td><td class="r mono">${fmtN(rec.income.new)}</td><td class="r mono" ${cls(rec.income.diff)}>${fmtN(rec.income.diff)}</td></tr>`+
+      `<tr><td>已付出</td><td class="r mono">${fmtN(rec.expense.old)}</td><td class="r mono">${fmtN(rec.expense.new)}</td><td class="r mono" ${cls(rec.expense.diff)}>${fmtN(rec.expense.diff)}</td></tr>`;
+    document.getElementById('reconcile-box').classList.remove('hide');
+  }
+}
+async function addCat(kind){
+  const name = prompt('新增名稱：'); if(!name) return;
+  if(await api('/api/v3/category','POST',{kind, name})) location.reload();
+}
+async function renameCat(id, cur){
+  const name = prompt('改名為：', cur); if(!name || name===cur) return;
+  if(await api('/api/v3/category/'+id,'PATCH',{name})) location.reload();
+}
+async function delCat(id){
+  if(!confirm('確定刪除？已使用此分類的資料會變成未分類。')) return;
+  if(await api('/api/v3/category/'+id,'DELETE')) document.getElementById('cat-'+id).remove();
+}
+</script>
+{% endblock %}

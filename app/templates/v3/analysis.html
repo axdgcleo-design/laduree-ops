@@ -1,0 +1,68 @@
+{% extends 'v3/base.html' %}
+{% block title %}分析 — Ladurée 財務{% endblock %}
+{% block body %}
+<div class="head"><div><div class="h1">分析中心</div><div class="sub">工種 · 廠商 · 現金流 · 預算 vs 實際</div></div></div>
+
+<div class="grid2">
+  <div class="card">
+    <h3>工種成本分析</h3>
+    {% set tmax = trades[0].total if trades else 1 %}
+    {% for t in trades %}
+    <div class="bar-row"><span>{{ t.name }}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:{{ (t.total/tmax*100)|round(1) }}%"></div></div>
+      <span class="r mono">{{ fmt(t.total) }}</span></div>
+    {% endfor %}
+    {% if not trades %}<div class="empty">尚無資料</div>{% endif %}
+  </div>
+
+  <div class="card">
+    <h3>廠商合作金額 Top 10</h3>
+    {% set vmax = vendors[0].paid if vendors else 1 %}
+    {% for v in vendors[:10] %}
+    <div class="bar-row"><span>{{ v.name }}</span>
+      <div class="bar-track"><div class="bar-fill bl" style="width:{{ (v.paid/vmax*100)|round(1) }}%"></div></div>
+      <span class="r mono">{{ fmt(v.paid) }}</span></div>
+    {% endfor %}
+    {% if not vendors %}<div class="empty">尚無資料</div>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h3>現金流（{{ year }}）— 實際收入 vs 實際支出</h3>
+  {% set cmax = (cashflow|map(attribute='inc_actual')|max, cashflow|map(attribute='exp_actual')|max)|max or 1 %}
+  <div class="cols" style="height:170px">
+    {% for m in cashflow %}
+    <div class="col" title="{{ m.m }}月">
+      <div style="display:flex;gap:2px;align-items:flex-end;height:100%;width:82%">
+        <div style="flex:1;background:var(--green);border-radius:3px 3px 0 0;height:{{ (m.inc_actual/cmax*100)|round(1) }}%"></div>
+        <div style="flex:1;background:var(--red);border-radius:3px 3px 0 0;height:{{ (m.exp_actual/cmax*100)|round(1) }}%"></div>
+      </div>
+      <small>{{ m.m }}</small>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="legend"><span><i style="background:var(--green)"></i>實際收入</span><span><i style="background:var(--red)"></i>實際支出</span></div>
+</div>
+
+<div class="card">
+  <h3>預算 vs 實際（依工種）</h3>
+  <table>
+    <thead><tr><th>工種</th><th class="r">預算（合約）</th><th class="r">實際（已付）</th><th class="r">差額</th><th style="width:180px">達成率</th></tr></thead>
+    <tbody>
+      {% for b in budget %}
+      <tr>
+        <td>{{ b.name }}</td>
+        <td class="r mono">{{ fmt(b.budget) }}</td>
+        <td class="r mono">{{ fmt(b.actual) }}</td>
+        <td class="r mono {{ 'r' if b.diff<0 else 'g' }}">{{ fmt(b.diff) }}</td>
+        <td>
+          {% set pct = (b.actual/b.budget*100) if b.budget else 0 %}
+          <div class="bar-track" style="height:16px"><div class="bar-fill {{ 'rd' if pct>100 else 'am' if pct>85 else 'gr' }}" style="width:{{ [pct,100]|min|round(1) }}%"></div></div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not budget %}<tr><td colspan="5" class="empty">尚無合約資料</td></tr>{% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

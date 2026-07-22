@@ -1,0 +1,36 @@
+{% extends 'v3/base.html' %}
+{% block title %}專案 — Ladurée 財務{% endblock %}
+{% block body %}
+<div class="head"><div><div class="h1">專案</div><div class="sub">收入、成本、毛利即時彙整</div></div></div>
+<div class="card" style="padding:0;overflow:hidden">
+<table>
+  <thead><tr>
+    <th>專案</th><th>業主</th><th>狀態</th>
+    <th class="r">設計費</th><th class="r">工程合約</th><th class="r">追加</th><th class="r">工程總價</th>
+    <th class="r">已收</th><th class="r">未收</th><th class="r">已付</th><th class="r">未付</th>
+    <th class="r">實際成本</th><th class="r">毛利</th><th class="r">毛利率</th>
+  </tr></thead>
+  <tbody>
+    {% for p in rows %}
+    <tr>
+      <td style="font-weight:600"><a href="/v3/project/{{ p.id }}" style="border-bottom:1px solid var(--line)">{{ p.name }}</a></td>
+      <td style="color:var(--mid)">{{ p.client_name or '—' }}</td>
+      <td><span class="tag {{ 'bl' if p.status=='active' }}">{{ {'active':'施工中','lead':'設計中','completed':'完工','paused':'暫停'}.get(p.status,p.status) }}</span></td>
+      <td class="r mono">{{ fmt(p.design_fee) }}</td>
+      <td class="r mono">{{ fmt(p.construction_contract) }}</td>
+      <td class="r mono">{{ fmt(p.add) if p.add else '—' }}</td>
+      <td class="r mono" style="font-weight:600">{{ fmt(p.total_price) }}</td>
+      <td class="r mono g">{{ fmt(p.received) }}</td>
+      <td class="r mono a">{{ fmt(p.pending) if p.pending else '—' }}</td>
+      <td class="r mono">{{ fmt(p.paid) }}</td>
+      <td class="r mono a">{{ fmt(p.unpaid) if p.unpaid else '—' }}</td>
+      <td class="r mono r">{{ fmt(p.actual_cost) }}</td>
+      <td class="r mono {{ 'g' if p.profit>=0 else 'r' }}" style="font-weight:600">{{ fmt(p.profit) }}</td>
+      <td class="r mono">{{ '%.0f'|format(p.margin) }}%</td>
+    </tr>
+    {% endfor %}
+    {% if not rows %}<tr><td colspan="14" class="empty">尚無專案</td></tr>{% endif %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

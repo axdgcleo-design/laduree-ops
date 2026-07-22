@@ -1,0 +1,115 @@
+{% extends 'v3/base.html' %}
+{% block title %}廠商 — Ladurée 財務{% endblock %}
+{% block body %}
+<div class="head"><div><div class="h1">廠商</div><div class="sub">合作案件數、合作總金額、未付款 · 可新增/編輯/合併重複</div></div></div>
+<div class="addbar">
+  <button class="btn" onclick="openMerge()">合併重複廠商</button>
+  <button class="btn p" onclick="newVen()">＋ 新增廠商</button>
+</div>
+<div class="card" style="padding:0;overflow:hidden">
+<table>
+  <thead><tr><th>廠商</th><th class="r">合作案件</th><th class="r">付款筆數</th><th class="r">已付總額</th><th class="r">未付款</th><th></th></tr></thead>
+  <tbody>
+    {% for v in rows %}
+    <tr>
+      <td style="font-weight:600">{{ v.name }}</td>
+      <td class="r mono">{{ v.projects }}</td>
+      <td class="r mono" style="color:var(--mid)">{{ v.cnt }}</td>
+      <td class="r mono">{{ fmt(v.paid) }}</td>
+      <td class="r mono {{ 'r' if v.unpaid }}">{{ fmt(v.unpaid) if v.unpaid else '—' }}</td>
+      <td style="white-space:nowrap"><span class="iconbtn" onclick="editVen({{ v.id }})">編輯</span><span class="iconbtn" style="color:var(--red)" onclick="delVen({{ v.id }})">刪</span></td>
+    </tr>
+    {% endfor %}
+    {% if not rows %}<tr><td colspan="6" class="empty">尚無廠商資料</td></tr>{% endif %}
+  </tbody>
+</table>
+</div>
+
+<!-- 新增/編輯廠商 -->
+<div class="ov" id="ven-modal">
+  <div class="modal">
+    <h3 id="ven-title">新增廠商</h3>
+    <input type="hidden" id="v-id">
+    <div class="fg">
+      <div class="fld"><label>廠商名稱</label><input id="v-name" placeholder="例：水電/蘇先生"></div>
+      <div class="fld"><label>工種</label><select id="v-trade"><option value="">—</option>{% for t in trades %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+      <div class="fld"><label>聯絡人</label><input id="v-contact"></div>
+      <div class="fld"><label>電話</label><input id="v-tel"></div>
+      <div class="fld"><label>統編</label><input id="v-taxid"></div>
+      <div class="fld"><label>銀行</label><input id="v-bank"></div>
+      <div class="fld"><label>戶名</label><input id="v-holder"></div>
+      <div class="fld"><label>帳號</label><input id="v-account"></div>
+      <div class="fld full"><label>備註</label><textarea id="v-note"></textarea></div>
+    </div>
+    <div class="macts">
+      <button class="btn" onclick="closeM('ven-modal')">取消</button>
+      <button class="btn p" onclick="saveVen()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 合併廠商 -->
+<div class="ov" id="merge-modal">
+  <div class="modal">
+    <h3>合併重複廠商</h3>
+    <p style="color:var(--mid);font-size:13px;margin-bottom:12px">勾選要合併的廠商，再選「合併後保留」哪一個。被合併者的所有支出與合約會改掛到保留的廠商。</p>
+    <div class="fld" style="margin-bottom:12px"><label>合併後保留為</label>
+      <select id="merge-to"><option value="">—</option>{% for v in all_vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}</select>
+    </div>
+    <div style="max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px 12px">
+      {% for v in all_vendors %}
+      <label style="display:block;padding:4px 0;font-size:13px"><input type="checkbox" class="merge-cb" value="{{ v.id }}"> {{ v.name }}</label>
+      {% endfor %}
+    </div>
+    <div class="macts">
+      <button class="btn" onclick="closeM('merge-modal')">取消</button>
+      <button class="btn p" onclick="doMerge()">合併</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const VEN = {{ edit_map|safe }};
+function newVen(){
+  document.getElementById('ven-title').textContent='新增廠商';
+  setVal('v-id','');
+  ['v-name','v-contact','v-tel','v-taxid','v-bank','v-holder','v-account','v-note'].forEach(i=>setVal(i,''));
+  setVal('v-trade','');
+  openM('ven-modal');
+}
+function editVen(id){
+  const r = VEN[id]; if(!r) return;
+  document.getElementById('ven-title').textContent='編輯廠商';
+  setVal('v-id', id); setVal('v-name', r.name||''); setVal('v-trade', r.category_id||'');
+  setVal('v-contact', r.contact||''); setVal('v-tel', r.tel||''); setVal('v-taxid', r.tax_id||'');
+  setVal('v-bank', r.bank_name||''); setVal('v-holder', r.bank_holder||''); setVal('v-account', r.bank_account||'');
+  setVal('v-note', r.note||'');
+  openM('ven-modal');
+}
+async function saveVen(){
+  const id = val('v-id');
+  const name = val('v-name').trim();
+  if(!name){ alert('請填廠商名稱'); return; }
+  const body = {name, category_id: val('v-trade')||null, contact: val('v-contact'), tel: val('v-tel'),
+    tax_id: val('v-taxid'), bank_name: val('v-bank'), bank_holder: val('v-holder'),
+    bank_account: val('v-account'), note: val('v-note')};
+  const j = id ? await api('/api/v3/vendor/'+id,'PATCH',body) : await api('/api/v3/vendor','POST',body);
+  if(j) location.reload();
+}
+async function delVen(id){
+  if(!confirm('確定刪除這個廠商？（其支出的廠商欄會變空白）')) return;
+  if(await api('/api/v3/vendor/'+id,'DELETE')) location.reload();
+}
+function openMerge(){ openM('merge-modal'); }
+async function doMerge(){
+  const to_id = val('merge-to');
+  if(!to_id){ alert('請選擇要保留的廠商'); return; }
+  const from_ids = [...document.querySelectorAll('.merge-cb:checked')].map(c=>c.value).filter(v=>v!==to_id);
+  if(!from_ids.length){ alert('請勾選要合併的廠商'); return; }
+  if(!confirm('確定把 '+from_ids.length+' 家廠商合併到所選廠商？')) return;
+  if(await api('/api/v3/vendor/merge','POST',{to_id, from_ids})) location.reload();
+}
+</script>
+{% endblock %}

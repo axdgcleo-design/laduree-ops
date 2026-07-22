@@ -397,6 +397,18 @@ try:
 except Exception as e:
     print(f"init_db error: {e}")
 
+# Finance v3（Database-First 重構）— 新表與舊表並行，不影響現有頁面
+try:
+    from app.finance_v3 import bp as finance_v3_bp, init_v3
+    from app.finance_v3_ui import bp as finance_v3_ui_bp
+    from app.finance_v3_api import bp as finance_v3_api_bp
+    init_v3()
+    app.register_blueprint(finance_v3_bp)
+    app.register_blueprint(finance_v3_ui_bp)
+    app.register_blueprint(finance_v3_api_bp)
+except Exception as e:
+    print(f"finance_v3 init error: {e}")
+
 # ── Routes ───────────────────────────────────────────────────────────
 @app.route('/')
 def dashboard():
