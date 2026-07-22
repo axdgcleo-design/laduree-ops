@@ -134,7 +134,7 @@ def vendor_analysis(year=None):
         COALESCE(SUM(CASE WHEN e.status='pending' THEN e.amount END),0) unpaid,
         COUNT(DISTINCT e.project_id) projects, COUNT(e.id) cnt
         FROM vendors_v3 v LEFT JOIN expenses e ON e.vendor_id=v.id{(' AND 1=1'+yf) if yf else ''}
-        GROUP BY v.id HAVING paid>0 OR unpaid>0 ORDER BY paid DESC""", params)
+        GROUP BY v.id ORDER BY paid DESC, v.name""", params)
 
 def cashflow(year=None):
     """每月 預計/實際 收入、預計/實際 支出。"""

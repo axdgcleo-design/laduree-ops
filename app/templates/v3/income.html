@@ -5,7 +5,8 @@
   <div><div class="h1">收入管理</div><div class="sub">業主請款、追加款、退款統一管理</div></div>
   <div style="text-align:right">
     <div class="mono g" style="font-size:20px;font-weight:700">已收 NT$ {{ fmt(recv) }}</div>
-    <div class="sub" style="margin:0">合計 NT$ {{ fmt(total) }}</div>
+    <div class="sub" style="margin:0 0 6px">合計 NT$ {{ fmt(total) }}</div>
+    <button class="btn p" onclick="newInc()">＋ 新增收入</button>
   </div>
 </div>
 
@@ -28,7 +29,7 @@
 
 <div class="card" style="padding:0;overflow:hidden">
 <table>
-  <thead><tr><th>應收日</th><th>專案</th><th>期數 / 說明</th><th>類型</th><th class="r">金額</th><th>銀行</th><th>狀態</th></tr></thead>
+  <thead><tr><th>應收日</th><th>專案</th><th>期數 / 說明</th><th>類型</th><th class="r">金額</th><th>銀行</th><th>狀態</th><th></th></tr></thead>
   <tbody>
     {% for r in rows %}
     <tr>
@@ -38,12 +39,84 @@
       <td><span class="tag bl">{{ r.type_name or '—' }}</span></td>
       <td class="r mono" style="font-weight:600">{{ fmt(r.amount) }}</td>
       <td class="mono" style="color:var(--muted);font-size:12px">{{ r.bank_account or '—' }}</td>
-      <td>{% if r.status=='received' %}<span class="tag gr">已收</span>{% else %}<span class="tag am">未收</span>{% endif %}</td>
+      <td>
+        {% if r.status=='received' %}<span class="tag gr" style="cursor:pointer" onclick="toggleRecv({{ r.id }}, false)">已收</span>
+        {% else %}<span class="tag am" style="cursor:pointer" title="點擊標記已收" onclick="toggleRecv({{ r.id }}, true)">未收 ▸</span>{% endif %}
+      </td>
+      <td style="white-space:nowrap"><span class="iconbtn" onclick="editInc({{ r.id }})">編輯</span><span class="iconbtn" style="color:var(--red)" onclick="delInc({{ r.id }})">刪</span></td>
     </tr>
     {% endfor %}
-    {% if not rows %}<tr><td colspan="7" class="empty">沒有符合條件的收入</td></tr>{% endif %}
+    {% if not rows %}<tr><td colspan="8" class="empty">沒有符合條件的收入</td></tr>{% endif %}
   </tbody>
-  <tfoot><tr><td colspan="4">合計 {{ rows|length }} 筆</td><td class="r mono">NT$ {{ fmt(total) }}</td><td colspan="2"></td></tr></tfoot>
+  <tfoot><tr><td colspan="4">合計 {{ rows|length }} 筆</td><td class="r mono">NT$ {{ fmt(total) }}</td><td colspan="3"></td></tr></tfoot>
 </table>
 </div>
+
+<!-- 新增/編輯收入 Modal -->
+<div class="ov" id="inc-modal">
+  <div class="modal">
+    <h3 id="inc-title">新增收入</h3>
+    <input type="hidden" id="i-id">
+    <div class="fg">
+      <div class="fld"><label>專案</label><select id="i-project"><option value="">—</option>{% for p in opts.projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></div>
+      <div class="fld"><label>收入類型</label><select id="i-type"><option value="">—</option>{% for t in opts.income_types %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+      <div class="fld"><label>請款期數</label><input id="i-period" type="number" min="1" value="1"></div>
+      <div class="fld"><label>金額</label><input id="i-amount" type="number" min="0"></div>
+      <div class="fld"><label>應收日期</label><input id="i-due" type="date"></div>
+      <div class="fld"><label>稅別</label><select id="i-tax"><option>未稅</option><option>含稅</option><option>免稅</option></select></div>
+      <div class="fld"><label>收款銀行</label><input id="i-bank" placeholder="末五碼或銀行"></div>
+      <div class="fld"><label>發票號碼</label><input id="i-inv"></div>
+      <div class="fld"><label>狀態</label><select id="i-status" onchange="document.getElementById('i-recvd-wrap').style.display=this.value==='received'?'':'none'"><option value="pending">未收</option><option value="received">已收</option></select></div>
+      <div class="fld" id="i-recvd-wrap" style="display:none"><label>收款日期</label><input id="i-recvd" type="date"></div>
+      <div class="fld full"><label>備註</label><textarea id="i-note"></textarea></div>
+    </div>
+    <div class="macts">
+      <button class="btn" onclick="closeM('inc-modal')">取消</button>
+      <button class="btn p" onclick="saveInc()">儲存</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const INC = {{ edit_map|safe }};
+function newInc(){
+  document.getElementById('inc-title').textContent='新增收入';
+  setVal('i-id',''); ['i-amount','i-bank','i-inv','i-note','i-recvd'].forEach(i=>setVal(i,''));
+  setVal('i-project',''); setVal('i-type',''); setVal('i-period','1'); setVal('i-tax','未稅');
+  setVal('i-status','pending'); setVal('i-due', new Date().toISOString().slice(0,10));
+  document.getElementById('i-recvd-wrap').style.display='none';
+  openM('inc-modal');
+}
+function editInc(id){
+  const r = INC[id]; if(!r) return;
+  document.getElementById('inc-title').textContent='編輯收入';
+  setVal('i-id', id); setVal('i-project', r.project_id||''); setVal('i-type', r.type_id||'');
+  setVal('i-period', r.period_no||1); setVal('i-amount', r.amount||''); setVal('i-due', r.due_date||'');
+  setVal('i-tax', r.tax_setting||'未稅'); setVal('i-bank', r.bank_account||''); setVal('i-inv', r.invoice_no||'');
+  setVal('i-status', r.status||'pending'); setVal('i-recvd', r.received_date||''); setVal('i-note', r.note||'');
+  document.getElementById('i-recvd-wrap').style.display = r.status==='received'?'':'none';
+  openM('inc-modal');
+}
+async function saveInc(){
+  const id = val('i-id');
+  const body = {
+    project_id: val('i-project')||null, type_id: val('i-type')||null,
+    period_no: parseInt(val('i-period'))||1, amount: parseFloat(val('i-amount'))||0,
+    due_date: val('i-due'), tax_setting: val('i-tax'), bank_account: val('i-bank'),
+    invoice_no: val('i-inv'), status: val('i-status'), received_date: val('i-recvd'), note: val('i-note')
+  };
+  const j = id ? await api('/api/v3/income/'+id,'PATCH',body)
+               : await api('/api/v3/income','POST',body);
+  if(j) location.reload();
+}
+async function toggleRecv(id, received){
+  if(await api('/api/v3/income/'+id+'/receive','POST',{received})) location.reload();
+}
+async function delInc(id){
+  if(!confirm('確定刪除這筆收入？')) return;
+  if(await api('/api/v3/income/'+id,'DELETE')) location.reload();
+}
+</script>
 {% endblock %}

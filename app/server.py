@@ -401,9 +401,11 @@ except Exception as e:
 try:
     from app.finance_v3 import bp as finance_v3_bp, init_v3
     from app.finance_v3_ui import bp as finance_v3_ui_bp
+    from app.finance_v3_api import bp as finance_v3_api_bp
     init_v3()
     app.register_blueprint(finance_v3_bp)
     app.register_blueprint(finance_v3_ui_bp)
+    app.register_blueprint(finance_v3_api_bp)
 except Exception as e:
     print(f"finance_v3 init error: {e}")
 

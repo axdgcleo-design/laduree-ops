@@ -79,6 +79,23 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
 .note-btn:hover{color:var(--ink)}
 .note-row td{background:#faf8f5;color:var(--mid);font-size:12px;white-space:normal;line-height:1.6}
 @media(max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}.grid2{grid-template-columns:1fr}.side{display:none}}
+/* Modal */
+.ov{position:fixed;inset:0;background:rgba(26,26,26,.45);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto}
+.ov.open{display:flex}
+.modal{background:var(--white);border-radius:10px;width:100%;max-width:600px;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.2)}
+.modal h3{font-size:16px;font-weight:700;margin-bottom:16px}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fg .full{grid-column:1/-1}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fld label{font-size:11px;color:var(--mid);letter-spacing:.03em}
+.fld input,.fld select,.fld textarea{font-family:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--white);color:var(--ink);width:100%}
+.fld textarea{min-height:56px;resize:vertical}
+.macts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.btn.g2{background:var(--green);color:#fff;border-color:var(--green)}
+.btn.rdel{color:var(--red);border-color:var(--red)}
+.iconbtn{cursor:pointer;color:var(--muted);font-size:13px;padding:2px 6px;border-radius:4px}
+.iconbtn:hover{color:var(--ink);background:var(--cream)}
+.addbar{display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px}
 </style>
 </head>
 <body>
@@ -92,6 +109,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
       <a href="/v3/expenses" class="{{ 'on' if active=='expenses' }}">支出</a>
       <a href="/v3/vendors"  class="{{ 'on' if active=='vendors' }}">廠商</a>
       <a href="/v3/analysis" class="{{ 'on' if active=='analysis' }}">分析</a>
+      <a href="/v3/settings" class="{{ 'on' if active=='settings' }}">設定</a>
     </nav>
     <div style="margin-top:auto;padding:0 22px;font-size:10px;color:var(--muted)">v3 · Database-First</div>
   </aside>
@@ -99,5 +117,21 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
     {% block body %}{% endblock %}
   </main>
 </div>
+<script>
+// 共用：API 呼叫 + Modal 開關
+async function api(url, method, body){
+  const r = await fetch(url, {method, headers:{'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined});
+  let j = {}; try{ j = await r.json(); }catch(e){}
+  if(!r.ok || j.ok===false){ alert('操作失敗：'+(j.error||r.status)); return null; }
+  return j;
+}
+function openM(id){ document.getElementById(id).classList.add('open'); }
+function closeM(id){ document.getElementById(id).classList.remove('open'); }
+document.addEventListener('click', e=>{ if(e.target.classList.contains('ov')) e.target.classList.remove('open'); });
+function val(id){ const el=document.getElementById(id); return el? el.value : ''; }
+function setVal(id,v){ const el=document.getElementById(id); if(el) el.value = (v==null?'':v); }
+</script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

@@ -13,12 +13,16 @@
   <td class="r mono {{ 'r' if r.remain and r.remain>0 }}">{{ fmt(r.remain) if r.remain is not none else '—' }}</td>
   <td>{% if r.invoice_no %}<span class="tag gr">{{ r.invoice_no }}</span>{% else %}<span style="color:var(--muted)">無</span>{% endif %}</td>
   <td>{% if r.status=='paid' %}<span class="tag gr">已付</span>{% else %}<span class="tag am">未付</span>{% endif %}</td>
+  <td style="white-space:nowrap"><span class="iconbtn" onclick="editExp({{ r.id }})">編輯</span><span class="iconbtn" style="color:var(--red)" onclick="delExp({{ r.id }})">刪</span></td>
 </tr>
 {% endmacro %}
 {% block body %}
 <div class="head">
   <div><div class="h1">支出管理</div><div class="sub">每筆付款一列 · 可搜尋 / 排序 / 篩選 / 依工種分組</div></div>
-  <div class="mono" style="font-size:20px;font-weight:700">NT$ {{ fmt(total) }}</div>
+  <div style="text-align:right">
+    <div class="mono" style="font-size:20px;font-weight:700">NT$ {{ fmt(total) }}</div>
+    <button class="btn p" style="margin-top:6px" onclick="newExp()">＋ 新增支出</button>
+  </div>
 </div>
 
 <form class="filters" method="get">
@@ -55,20 +59,90 @@
 <table>
   <thead><tr>
     <th>日期</th><th>專案</th><th>工種</th><th>廠商</th><th>品項</th>
-    <th class="r">合約金額</th><th class="r">本次付款</th><th class="r">累積付款</th><th class="r">剩餘未付</th><th>發票</th><th>狀態</th>
+    <th class="r">合約金額</th><th class="r">本次付款</th><th class="r">累積付款</th><th class="r">剩餘未付</th><th>發票</th><th>狀態</th><th></th>
   </tr></thead>
   <tbody>
     {% if group %}
       {% for tname, items in grouped.items() %}
-      <tr class="grp"><td colspan="6">▎{{ tname }}（{{ items|length }} 筆）</td><td class="r mono" colspan="5">NT$ {{ fmt(items|sum(attribute='amount')) }}</td></tr>
+      <tr class="grp"><td colspan="6">▎{{ tname }}（{{ items|length }} 筆）</td><td class="r mono" colspan="6">NT$ {{ fmt(items|sum(attribute='amount')) }}</td></tr>
       {% for r in items %}{{ row(r) }}{% endfor %}
       {% endfor %}
     {% else %}
       {% for r in rows %}{{ row(r) }}{% endfor %}
     {% endif %}
-    {% if not rows %}<tr><td colspan="11" class="empty">沒有符合條件的支出</td></tr>{% endif %}
+    {% if not rows %}<tr><td colspan="12" class="empty">沒有符合條件的支出</td></tr>{% endif %}
   </tbody>
-  <tfoot><tr><td colspan="6">合計 {{ rows|length }} 筆</td><td class="r mono">NT$ {{ fmt(total) }}</td><td colspan="4"></td></tr></tfoot>
+  <tfoot><tr><td colspan="6">合計 {{ rows|length }} 筆</td><td class="r mono">NT$ {{ fmt(total) }}</td><td colspan="5"></td></tr></tfoot>
 </table>
 </div>
+
+<!-- 新增/編輯支出 Modal -->
+<div class="ov" id="exp-modal">
+  <div class="modal">
+    <h3 id="exp-title">新增支出</h3>
+    <input type="hidden" id="e-id">
+    <div class="fg">
+      <div class="fld"><label>專案</label><select id="e-project"><option value="">公司支出（不分案）</option>{% for p in opts.projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></div>
+      <div class="fld"><label>工種</label><select id="e-trade"><option value="">—</option>{% for t in opts.trades %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+      <div class="fld"><label>廠商</label><select id="e-vendor"><option value="">—</option>{% for v in opts.vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}</select></div>
+      <div class="fld"><label>品項 / 說明</label><input id="e-item" placeholder="例：第一期、鋁窗工程款"></div>
+      <div class="fld"><label>本次付款金額</label><input id="e-amount" type="number" min="0"></div>
+      <div class="fld"><label>付款日期</label><input id="e-date" type="date"></div>
+      <div class="fld"><label>付款方式</label><select id="e-pay"><option value="">—</option><option value="transfer">轉帳</option><option value="cash">現金</option><option value="check">開票</option></select></div>
+      <div class="fld"><label>稅別</label><select id="e-tax"><option value="">—</option><option>未稅</option><option>含稅</option><option>免稅</option></select></div>
+      <div class="fld"><label>發票號碼</label><input id="e-inv"></div>
+      <div class="fld"><label>狀態</label><select id="e-status"><option value="paid">已付</option><option value="pending">未付</option></select></div>
+      <div class="fld"><label>應付日（未付時）</label><input id="e-due" type="date"></div>
+      <div class="fld full"><label>備註</label><textarea id="e-note"></textarea></div>
+    </div>
+    <div class="macts">
+      <button class="btn" onclick="closeM('exp-modal')">取消</button>
+      <button class="btn p" onclick="saveExp()">儲存</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const EXP = {{ edit_map|safe }};
+function newExp(){
+  document.getElementById('exp-title').textContent='新增支出';
+  setVal('e-id','');
+  ['e-item','e-amount','e-inv','e-note','e-due'].forEach(i=>setVal(i,''));
+  setVal('e-project',''); setVal('e-trade',''); setVal('e-vendor','');
+  setVal('e-pay',''); setVal('e-tax','未稅'); setVal('e-status','paid');
+  setVal('e-date', new Date().toISOString().slice(0,10));
+  openM('exp-modal');
+}
+function editExp(id){
+  const r = EXP[id]; if(!r) return;
+  document.getElementById('exp-title').textContent='編輯支出';
+  setVal('e-id', id);
+  setVal('e-project', r.project_id||''); setVal('e-trade', r.category_id||'');
+  setVal('e-vendor', r.vendor_id||''); setVal('e-item', r.item||'');
+  setVal('e-amount', r.amount||''); setVal('e-date', r.date||'');
+  setVal('e-pay', r.payment_method||''); setVal('e-tax', r.tax_setting||'');
+  setVal('e-inv', r.invoice_no||''); setVal('e-status', r.status||'paid');
+  setVal('e-due', r.due_date||''); setVal('e-note', r.note||'');
+  openM('exp-modal');
+}
+async function saveExp(){
+  const id = val('e-id');
+  const body = {
+    project_id: val('e-project')||null, category_id: val('e-trade')||null,
+    vendor_id: val('e-vendor')||null, item: val('e-item'),
+    amount: parseFloat(val('e-amount'))||0, date: val('e-date'), due_date: val('e-due'),
+    payment_method: val('e-pay'), tax_setting: val('e-tax'), invoice_no: val('e-inv'),
+    status: val('e-status'), note: val('e-note')
+  };
+  const j = id ? await api('/api/v3/expense/'+id,'PATCH',body)
+               : await api('/api/v3/expense','POST',body);
+  if(j) location.reload();
+}
+async function delExp(id){
+  if(!confirm('確定刪除這筆支出？')) return;
+  if(await api('/api/v3/expense/'+id,'DELETE')) location.reload();
+}
+</script>
 {% endblock %}
