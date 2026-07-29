@@ -1,0 +1,20 @@
+{% extends 'app_base.html' %}
+{% import '_app_card.html' as card %}
+{% block title %}時間軸 — 整理助手{% endblock %}
+{% block heading %}時間軸{% endblock %}
+{% block body %}
+
+<div class="ap-seg">
+  <a href="{{ url_for('app_timeline', mode='site') }}" class="{% if mode=='site' %}on{% endif %}">🏗️ 工地</a>
+  <a href="{{ url_for('app_timeline', mode='personal') }}" class="{% if mode=='personal' %}on{% endif %}">📇 個人</a>
+</div>
+
+{% if groups %}
+  {{ card.daygrid(groups) }}
+  {% if shown < total %}<div class="ap-hint">顯示最近 {{ shown }} / {{ total }} 張</div>{% endif %}
+{% else %}
+  <div class="ap-empty"><div class="big">🕐</div><div style="margin-top:.5rem">還沒有照片</div></div>
+{% endif %}
+
+{% endblock %}
+{% block sheets %}{% include '_app_sheet.html' %}{% endblock %}

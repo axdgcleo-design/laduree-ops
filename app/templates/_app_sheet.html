@@ -1,0 +1,90 @@
+<!-- 照片編輯 sheet（工地／個人 共用）-->
+<div class="sheet-overlay" id="ap-ov" onclick="apClose()"></div>
+<div class="sheet" id="ap-sheet">
+  <div class="sheet-grab"></div>
+  <img class="sheet-img" id="ap-img" src="">
+  <div id="ap-modehint" style="font-size:.72rem;color:var(--muted);margin-bottom:.7rem"></div>
+
+  <div id="ap-site-fields">
+    <div class="ap-field">
+      <label>案場</label>
+      <select id="ap-proj">
+        <option value="">未指定案場</option>
+        {% for p in sheet_projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="ap-field">
+      <label>空間位置</label>
+      <input id="ap-area" list="ap-area-list" placeholder="例：客廳">
+    </div>
+    <div class="ap-field">
+      <label>工種（可複選，逗號分隔）</label>
+      <input id="ap-tag" list="ap-tag-list" placeholder="例：水電,泥作">
+    </div>
+  </div>
+
+  <div id="ap-personal-fields" style="display:none">
+    <div class="ap-field">
+      <label>分類</label>
+      <input id="ap-cat" list="ap-cat-list" placeholder="例：想買">
+    </div>
+  </div>
+
+  <div class="ap-field">
+    <label>備註</label>
+    <textarea id="ap-note" style="min-height:52px"></textarea>
+  </div>
+
+  <datalist id="ap-area-list">{% for a in sheet_areas %}<option value="{{ a }}">{% endfor %}</datalist>
+  <datalist id="ap-tag-list">{% for t in sheet_tags %}<option value="{{ t }}">{% endfor %}</datalist>
+  <datalist id="ap-cat-list">{% for c in sheet_cats %}<option value="{{ c }}">{% endfor %}</datalist>
+
+  <div class="modal-actions" style="margin-top:.5rem">
+    <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-right:auto" onclick="apDelete()">刪除</button>
+    <button class="btn btn-outline" onclick="apStar()" id="ap-starbtn">☆ 最愛</button>
+    <button class="btn btn-primary" onclick="apSave()">儲存</button>
+  </div>
+</div>
+<div class="toast" id="ap-toast"></div>
+
+<script>
+let apId=null, apMode='site', apFav=false;
+function apToast(m){const t=document.getElementById('ap-toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1500);}
+function apOpen(id,mode,note,tag,area,cat,project){
+  apId=id; apMode=mode||'site';
+  document.getElementById('ap-img').src='/site-photo/'+id+'/img';
+  document.getElementById('ap-modehint').textContent = apMode==='site' ? ('🏗️ '+(project||'未指定案場')) : '📇 個人照片';
+  document.getElementById('ap-note').value=note||'';
+  document.getElementById('ap-area').value=area||'';
+  document.getElementById('ap-tag').value=tag||'';
+  document.getElementById('ap-cat').value=cat||'';
+  document.getElementById('ap-site-fields').style.display = apMode==='site' ? '' : 'none';
+  document.getElementById('ap-personal-fields').style.display = apMode==='personal' ? '' : 'none';
+  document.getElementById('ap-ov').classList.add('open');
+  document.getElementById('ap-sheet').classList.add('open');
+}
+function apClose(){document.getElementById('ap-ov').classList.remove('open');document.getElementById('ap-sheet').classList.remove('open');apId=null;}
+async function apStar(){
+  if(!apId) return; apFav=!apFav;
+  document.getElementById('ap-starbtn').textContent = apFav?'★ 最愛':'☆ 最愛';
+  await fetch('/api/site-photo/'+apId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({favorite:apFav?1:0})});
+}
+async function apSave(){
+  if(!apId) return;
+  let body={note:document.getElementById('ap-note').value.trim()};
+  if(apMode==='site'){
+    body.project_id=document.getElementById('ap-proj').value||null;
+    body.area=document.getElementById('ap-area').value.trim();
+    body.tag=document.getElementById('ap-tag').value.trim();
+  }else{
+    body.category=document.getElementById('ap-cat').value.trim();
+  }
+  const r=await fetch('/api/site-photo/'+apId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if((await r.json()).ok){ location.reload(); }
+}
+async function apDelete(){
+  if(!apId||!confirm('確定刪除這張照片？')) return;
+  const r=await fetch('/api/site-photo/'+apId,{method:'DELETE'});
+  if((await r.json()).ok) location.reload();
+}
+</script>

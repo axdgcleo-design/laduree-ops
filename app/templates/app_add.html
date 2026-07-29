@@ -1,0 +1,119 @@
+{% extends 'app_base.html' %}
+{% block title %}匯入 — 整理助手{% endblock %}
+{% block topbar %}
+  <a class="ap-back" href="{{ url_for('app_sites', mode=mode) }}">‹</a>
+  <div class="ap-title">匯入照片</div>
+{% endblock %}
+{% block body %}
+
+<div class="ap-seg">
+  <a href="{{ url_for('app_add', mode='site') }}" class="{% if mode=='site' %}on{% endif %}">🏗️ 工地</a>
+  <a href="{{ url_for('app_add', mode='personal') }}" class="{% if mode=='personal' %}on{% endif %}">📇 個人</a>
+</div>
+
+{% if mode=='site' %}
+<div class="ap-field">
+  <label>案場</label>
+  <select id="add-proj">
+    <option value="">未指定（先匯入，之後到「整理」歸檔）</option>
+    {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+  </select>
+</div>
+<div class="ap-field">
+  <label>工種（選填，可逗號分隔）</label>
+  <input id="add-tag" list="add-tag-list" placeholder="例：木作">
+  <datalist id="add-tag-list">{% for t in tags %}<option value="{{ t }}">{% endfor %}</datalist>
+</div>
+{% else %}
+<div class="ap-field">
+  <label>分類</label>
+  <div class="ap-pickrow" id="add-catrow">
+    {% for c in cats %}<button type="button" class="ap-pick" data-v="{{ c }}" onclick="pickCat(this)">{{ c }}</button>{% endfor %}
+  </div>
+  <input id="add-cat" style="margin-top:.5rem" placeholder="或自訂分類名稱">
+</div>
+{% endif %}
+
+<label class="ap-drop" for="add-files" style="display:block;cursor:pointer">
+  <div class="big">🖼️</div>
+  <div style="font-weight:600;margin-top:.3rem">從相簿選擇 / 拍照</div>
+  <div style="font-size:.76rem;margin-top:.2rem">可一次多選，會自動壓縮加快上傳</div>
+</label>
+<input id="add-files" type="file" accept="image/*" multiple capture="environment" style="display:none" onchange="onFiles(event)">
+
+<div class="ap-preview-strip" id="add-strip"></div>
+<button class="ap-btn" id="add-btn" disabled onclick="doUpload()">選擇照片</button>
+<div class="ap-hint" id="add-status"></div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const MODE = {{ mode|tojson }};
+let picked = [];   // dataURL 陣列（已壓縮）
+
+function pickCat(b){
+  document.querySelectorAll('#add-catrow .ap-pick').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  document.getElementById('add-cat').value = b.dataset.v;
+}
+
+function downscale(file, max=1600, q=0.85){
+  return new Promise((resolve)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      let {width:w, height:h} = img;
+      if (Math.max(w,h) > max){ const r = max/Math.max(w,h); w=Math.round(w*r); h=Math.round(h*r); }
+      const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      resolve(cv.toDataURL('image/jpeg', q));
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+async function onFiles(ev){
+  const files = [...ev.target.files].filter(f=>f.type.startsWith('image/'));
+  if(!files.length) return;
+  const strip = document.getElementById('add-strip');
+  const btn = document.getElementById('add-btn');
+  btn.disabled = true;
+  document.getElementById('add-status').textContent = '處理中…';
+  picked = []; strip.innerHTML = '';
+  for(const f of files){
+    const d = await downscale(f);
+    if(!d) continue;
+    picked.push(d);
+    const im = document.createElement('img'); im.src = d; strip.appendChild(im);
+  }
+  document.getElementById('add-status').textContent = '';
+  btn.disabled = picked.length===0;
+  btn.textContent = '匯入 ' + picked.length + ' 張';
+}
+
+async function doUpload(){
+  if(!picked.length) return;
+  const btn = document.getElementById('add-btn'); btn.disabled = true;
+  const base = { mode: MODE };
+  if(MODE==='site'){ base.project_id = document.getElementById('add-proj').value || null;
+                     base.tag = (document.getElementById('add-tag').value||'').trim(); }
+  else { base.category = (document.getElementById('add-cat').value||'').trim(); }
+  let done = 0;
+  const CH = 8;
+  for(let i=0; i<picked.length; i+=CH){
+    const chunk = picked.slice(i, i+CH);
+    const r = await fetch('/api/app/upload', {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({...base, images: chunk})});
+    const j = await r.json(); done += (j.count||0);
+    document.getElementById('add-status').textContent = '上傳中… ' + done + ' / ' + picked.length;
+  }
+  document.getElementById('add-status').textContent = '完成！已匯入 ' + done + ' 張';
+  const dest = MODE==='site'
+    ? (base.project_id ? '/app/g/site/'+base.project_id : '/app/organize?mode=site')
+    : (base.category ? '/app/g/cat/'+encodeURIComponent(base.category) : '/app/organize?mode=personal');
+  setTimeout(()=>location.href = dest, 600);
+}
+</script>
+{% endblock %}

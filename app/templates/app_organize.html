@@ -1,0 +1,31 @@
+{% extends 'app_base.html' %}
+{% import '_app_card.html' as card %}
+{% block title %}整理 — 整理助手{% endblock %}
+{% block heading %}整理{% endblock %}
+{% block body %}
+
+<div class="ap-seg">
+  <a href="{{ url_for('app_organize', mode='site') }}" class="{% if mode=='site' %}on{% endif %}">🏗️ 工地</a>
+  <a href="{{ url_for('app_organize', mode='personal') }}" class="{% if mode=='personal' %}on{% endif %}">📇 個人</a>
+</div>
+
+{% if photos %}
+  <div class="ap-sec" style="margin-top:.2rem">
+    <span class="ap-dot" style="background:var(--amber)"></span>
+    <span class="ap-sec-t">未分類</span>
+    <span class="ap-sec-n">{{ total }} 張</span>
+  </div>
+  <div style="font-size:.76rem;color:var(--muted);margin:-.1rem 0 .6rem">
+    點一張照片 → {% if mode=='site' %}指定案場與工種{% else %}選擇分類{% endif %}，即完成歸檔。
+  </div>
+  <div class="ap-grid">{% for s in photos %}{{ card.cell(s) }}{% endfor %}</div>
+{% else %}
+  <div class="ap-empty">
+    <div class="big">✅</div>
+    <div style="margin-top:.5rem">全部整理好了！</div>
+    <div style="font-size:.8rem;margin-top:.3rem">{% if mode=='site' %}沒有待指定案場的工地照片{% else %}沒有待分類的個人照片{% endif %}</div>
+  </div>
+{% endif %}
+
+{% endblock %}
+{% block sheets %}{% include '_app_sheet.html' %}{% endblock %}

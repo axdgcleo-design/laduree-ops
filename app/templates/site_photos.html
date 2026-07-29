@@ -17,23 +17,34 @@
 
   <form method="get" action="{{ url_for('site_photos') }}">
     {% if selected_project %}<input type="hidden" name="project_id" value="{{ selected_project }}">{% endif %}
+    {% if sel_area %}<input type="hidden" name="area" value="{{ sel_area }}">{% endif %}
+    {% if sel_tag %}<input type="hidden" name="tag" value="{{ sel_tag }}">{% endif %}
+    {% if sel_status %}<input type="hidden" name="status" value="{{ sel_status }}">{% endif %}
+    {% if fav %}<input type="hidden" name="fav" value="1">{% endif %}
     <input class="sp-search" name="q" value="{{ q }}" placeholder="🔍 搜尋（空間 / 工項 / 備註）">
+    <div class="sp-daterow">
+      <input class="sp-date" type="date" name="date_from" value="{{ date_from }}" aria-label="起始日期">
+      <span class="sp-dash">→</span>
+      <input class="sp-date" type="date" name="date_to" value="{{ date_to }}" aria-label="結束日期">
+      <button class="sp-datego" type="submit">篩選</button>
+    </div>
   </form>
 
   <div class="sp-chips">
-    <a class="sp-chip {% if fav %}on{% endif %}"
-       href="{{ url_for('site_photos', project_id=selected_project, fav=(none if fav else 1), area=sel_area or none, tag=sel_tag or none, q=q or none) }}">⭐ 最愛{% if fav %}<span class="x">✕</span>{% endif %}</a>
-    {% for a in areas %}
-      <a class="sp-chip {% if sel_area==a %}on{% endif %}"
-         href="{{ url_for('site_photos', project_id=selected_project, area=(none if sel_area==a else a), tag=sel_tag or none, q=q or none) }}">📍 {{ a }}{% if sel_area==a %}<span class="x">✕</span>{% endif %}</a>
+    <a class="sp-chip {% if fav %}on{% endif %}" href="{{ fav_chip_url }}">⭐ 最愛{% if fav %}<span class="x">✕</span>{% endif %}</a>
+    {% for c in area_chips %}
+      <a class="sp-chip {% if c.active %}on{% endif %}" href="{{ c.url }}">📍 {{ c.name }}{% if c.active %}<span class="x">✕</span>{% endif %}</a>
     {% endfor %}
-    {% for t in filter_tags %}
-      <a class="sp-chip {% if sel_tag==t %}on{% endif %}"
-         href="{{ url_for('site_photos', project_id=selected_project, tag=(none if sel_tag==t else t), area=sel_area or none, q=q or none) }}">🔧 {{ t }}{% if sel_tag==t %}<span class="x">✕</span>{% endif %}</a>
+    {% for c in tag_chips %}
+      <a class="sp-chip {% if c.active %}on{% endif %}" href="{{ c.url }}">🔧 {{ c.name }}{% if c.active %}<span class="x">✕</span>{% endif %}</a>
     {% endfor %}
-    {% if sel_area or sel_tag or q or fav %}
-      <a class="sp-clear" href="{{ url_for('site_photos', project_id=selected_project) }}">清除篩選</a>
-    {% endif %}
+  </div>
+
+  <div class="sp-chips sp-chips-status">
+    {% for c in status_chips %}
+      <a class="sp-chip sp-chip-st {% if c.active %}on st-{{ c.key }}{% endif %}" href="{{ c.url }}">{{ c.label }}{% if c.active %}<span class="x">✕</span>{% endif %}</a>
+    {% endfor %}
+    {% if clear_url %}<a class="sp-clear" href="{{ clear_url }}">清除篩選</a>{% endif %}
   </div>
 
   {% if groups %}
@@ -43,7 +54,7 @@
       {% for s in g.rows %}
       <div class="sp-card" id="sp-{{ s.id }}">
         <div class="sp-thumb-wrap">
-          <img class="sp-thumb" loading="lazy" src="{{ url_for('site_photo_img', sid=s.id) }}"
+          <img class="sp-thumb" loading="lazy" src="{{ url_for('site_photo_thumb', sid=s.id) }}"
                onclick='{% if s.status=="fix" or s.issue_resolved %}location.href="{{ url_for("site_photo_issue", sid=s.id) }}"{% else %}openEdit({{ s.id }}, {{ s.status|tojson }}, {{ (s.note or "")|tojson }}, {{ (s.tag or "")|tojson }}, {{ (s.area or "")|tojson }}, {{ (s.project_name or "")|tojson }}){% endif %}'>
           {% if s.status=='fix' %}<span class="sp-flag fix">!</span>
           {% elif s.status=='discuss' %}<span class="sp-flag discuss">?</span>
@@ -64,11 +75,24 @@
       {% endfor %}
     </div>
     {% endfor %}
+
+    {% if pages > 1 %}
+    <div class="sp-pager">
+      {% if prev_url %}<a class="sp-page-btn" href="{{ prev_url }}">← 上一頁</a>{% else %}<span class="sp-page-btn dis">← 上一頁</span>{% endif %}
+      <span class="sp-page-info">{{ page }} / {{ pages }} 頁 · 共 {{ total }} 張</span>
+      {% if next_url %}<a class="sp-page-btn" href="{{ next_url }}">下一頁 →</a>{% else %}<span class="sp-page-btn dis">下一頁 →</span>{% endif %}
+    </div>
+    {% endif %}
   {% else %}
   <div class="card" style="margin-top:1.5rem">
     <div class="empty">
+      {% if has_filter %}
+      <div class="empty-title">找不到符合的照片</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-top:.4rem">試著放寬篩選條件，或<a href="{{ clear_url }}">清除篩選</a>。</div>
+      {% else %}
       <div class="empty-title">還沒有照片</div>
       <div style="font-size:.8rem;color:var(--muted);margin-top:.4rem">切到「拍照」開始記錄工地現況。</div>
+      {% endif %}
     </div>
   </div>
   {% endif %}
