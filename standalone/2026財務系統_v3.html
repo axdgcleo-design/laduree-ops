@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La Durée 財務 v3 — 漣一設計</title>
+<style>
+:root{
+  --cream:#f4f1ec;--ink:#1a1a1a;--mid:#6b6560;--muted:#a09890;--line:#e3ded6;
+  --red:#c44536;--red-bg:#fdf0ee;--green:#2d6a4f;--green-bg:#edf7f1;
+  --amber:#8a6000;--amber-bg:#fdf6e3;--blue:#1d4ed8;--blue-bg:#e8f0ff;--white:#fff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif;background:var(--cream);color:var(--ink);font-size:14px;line-height:1.5}
+.mono{font-variant-numeric:tabular-nums}
+a{color:inherit;text-decoration:none;cursor:pointer}
+.wrap{display:flex;min-height:100vh}
+.side{width:190px;background:var(--ink);color:var(--cream);flex:0 0 190px;position:sticky;top:0;height:100vh;padding:20px 0;display:flex;flex-direction:column}
+.brand{font-family:'Cormorant Garamond',serif;font-size:22px;letter-spacing:.06em;padding:0 22px 4px}
+.brand small{display:block;font-family:sans-serif;font-size:10px;letter-spacing:.28em;color:var(--muted);margin-top:2px}
+.nav{margin-top:22px;display:flex;flex-direction:column;gap:1px}
+.nav a{padding:11px 22px;font-size:13px;color:#cfc9c0;border-left:3px solid transparent}
+.nav a:hover{background:rgba(255,255,255,.05);color:#fff}
+.nav a.on{background:rgba(255,255,255,.08);color:#fff;border-left-color:var(--cream);font-weight:600}
+.side .foot{margin-top:auto;padding:0 18px}
+.side .foot .btn{width:100%;justify-content:center;margin-bottom:6px;background:transparent;color:#cfc9c0;border-color:#3a3a3a}
+.side .foot .btn:hover{background:rgba(255,255,255,.06);color:#fff}
+.main{flex:1;padding:26px 32px;max-width:1440px;overflow-x:auto}
+.h1{font-size:21px;font-weight:700}
+.sub{color:var(--mid);font-size:12px;margin-bottom:20px}
+.head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:18px}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
+.kpi{background:var(--white);border:1px solid var(--line);border-radius:8px;padding:13px 15px}
+.kpi .l{font-size:11px;color:var(--mid);margin-bottom:7px}
+.kpi .v{font-size:18px;font-weight:700}
+.kpi .s{font-size:11px;color:var(--muted);margin-top:3px}
+.g{color:var(--green)}.r{color:var(--red)}.a{color:var(--amber)}.b{color:var(--blue)}
+.card{background:var(--white);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin-bottom:16px}
+.card h3{font-size:13px;font-weight:700;margin-bottom:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:11px;color:var(--mid);font-weight:600;background:#faf8f5}
+td.r,th.r{text-align:right}
+tbody tr:hover{background:#faf8f5}
+tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--cream);color:var(--mid)}
+.tag.gr{background:var(--green-bg);color:var(--green)}.tag.rd{background:var(--red-bg);color:var(--red)}
+.tag.am{background:var(--amber-bg);color:var(--amber)}.tag.bl{background:var(--blue-bg);color:var(--blue)}
+.grp td{background:var(--ink);color:var(--cream);font-weight:700}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.filters select,.filters input{font-family:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--white);color:var(--ink)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg a{padding:7px 12px;font-size:12px;background:var(--white)}
+.seg a.on{background:var(--ink);color:var(--cream)}
+.btn{display:inline-flex;align-items:center;gap:4px;padding:7px 13px;border:1px solid var(--line);border-radius:6px;background:var(--white);font-size:12px;cursor:pointer;color:var(--ink)}
+.btn.p{background:var(--ink);color:var(--cream);border-color:var(--ink)}
+.btn:hover{opacity:.9}
+.iconbtn{cursor:pointer;color:var(--muted);font-size:12px;padding:2px 6px;border-radius:4px}
+.iconbtn:hover{color:var(--ink);background:var(--cream)}
+.addbar{display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px}
+.bar-row{display:grid;grid-template-columns:120px 1fr 100px;gap:10px;align-items:center;margin-bottom:9px;font-size:13px}
+.bar-track{background:var(--cream);border-radius:5px;height:22px;overflow:hidden}
+.bar-fill{height:100%;border-radius:5px;background:var(--ink)}
+.bar-fill.gr{background:var(--green)}.bar-fill.rd{background:var(--red)}.bar-fill.am{background:var(--amber)}.bar-fill.bl{background:var(--blue)}
+.cols{display:flex;align-items:flex-end;gap:6px;height:150px;padding-top:10px}
+.col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;height:100%}
+.col small{font-size:10px;color:var(--muted)}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--mid);margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+.hide{display:none}
+.note-row td{background:#faf8f5;color:var(--mid);font-size:12px;white-space:normal;line-height:1.6}
+.ov{position:fixed;inset:0;background:rgba(26,26,26,.45);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto}
+.ov.open{display:flex}
+.modal{background:var(--white);border-radius:10px;width:100%;max-width:620px;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.2)}
+.modal h3{font-size:16px;font-weight:700;margin-bottom:16px}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fg .full{grid-column:1/-1}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fld label{font-size:11px;color:var(--mid)}
+.fld input,.fld select,.fld textarea{font-family:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--white);color:var(--ink);width:100%}
+.fld textarea{min-height:56px;resize:vertical}
+.macts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.linkc{border-bottom:1px solid var(--line)}
+@media(max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}.grid2{grid-template-columns:1fr}.side{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="side">
+    <div class="brand">LA DURÉE<small>漣一設計 · 財務</small></div>
+    <nav class="nav" id="nav">
+      <a data-p="dashboard">總覽 Dashboard</a>
+      <a data-p="projects">專案</a>
+      <a data-p="income">收入</a>
+      <a data-p="expenses">支出</a>
+      <a data-p="vendors">廠商</a>
+      <a data-p="analysis">分析</a>
+      <a data-p="settings">設定</a>
+    </nav>
+    <div class="foot">
+      <button class="btn" onclick="exportBackup()">📤 匯出備份</button>
+      <button class="btn" onclick="document.getElementById('imp').click()">📥 匯入資料</button>
+      <input type="file" id="imp" accept=".json" style="display:none" onchange="onImport(event)">
+      <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px">v3 本機版 · <span id="storesz"></span></div>
+    </div>
+  </aside>
+  <main class="main" id="app"></main>
+</div>
+<div id="modalhost"></div>
+
+<script>
+/* ============ 儲存層（localStorage）============ */
+const KEY='laduree_finance_v3';
+const TABLES=['categories','vendors','projects','contracts','income','expenses'];
+let DB;  // 於檔案最底部（所有預設值/函式定義後）才 loadDB()，避免 TDZ
+function emptyDB(){ const d={_v3:true,_seq:{}}; TABLES.forEach(t=>d[t]=[]); return d; }
+function loadDB(){ try{ const d=JSON.parse(localStorage.getItem(KEY)); return d&&d._v3?d:seed(emptyDB()); }catch(e){ return seed(emptyDB()); } }
+function save(){ DB._savedAt=new Date().toISOString(); localStorage.setItem(KEY, JSON.stringify(DB)); updateStoreSize(); }
+function nextId(t){ DB._seq[t]=(DB._seq[t]||0)+1; return DB._seq[t]; }
+function updateStoreSize(){ const s=(localStorage.getItem(KEY)||'').length; const el=document.getElementById('storesz'); if(el) el.textContent=(s/1024).toFixed(0)+' KB'; }
+
+const DEF_TRADES=['木工','水電','泥作','油漆','防水','玻璃','鋁窗','系統櫃','鐵件','PVC','地板','磁磚','石材','衛浴','廚具','空調','清潔','保護工程','拆除工程','材料採購','其他'];
+const DEF_INCOME=['設計費','工程款','追加款','減項','退款','其他'];
+const DEF_COMP=['房租','薪資','軟體訂閱','行銷','交通','稅務','雜支','其他'];
+function seed(db){
+  const cur=db.categories||[];
+  const add=(kind,arr)=>arr.forEach((n,i)=>{ if(!cur.some(c=>c.kind===kind&&c.name===n)){ db._seq.categories=(db._seq.categories||0)+1; cur.push({id:db._seq.categories,kind,name:n,sort_order:i}); } });
+  add('trade',DEF_TRADES); add('income_type',DEF_INCOME); add('company_expense',DEF_COMP);
+  db.categories=cur; return db;
+}
+
+/* ============ 小工具 ============ */
+const fmt=n=>Math.round(Number(n)||0).toLocaleString();
+const money=n=>'NT$ '+fmt(n);
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const byId=(t,id)=>DB[t].find(x=>x.id==id);
+const catName=id=>{const c=byId('categories',id);return c?c.name:'';};
+const venName=id=>{const v=byId('vendors',id);return v?v.name:'';};
+const projName=id=>{const p=byId('projects',id);return p?p.name:'';};
+const sum=(arr,f)=>arr.reduce((a,x)=>a+(Number(f?f(x):x)||0),0);
+const today=()=>new Date().toISOString().slice(0,10);
+const cats=kind=>DB.categories.filter(c=>c.kind===kind).sort((a,b)=>(a.sort_order-b.sort_order)||a.name.localeCompare(b.name));
+const STATUS_ZH={active:'施工中',lead:'設計中',completed:'完工',paused:'暫停',archived:'封存'};
+const PAY_ZH={transfer:'轉帳',cash:'現金',check:'開票'};
+
+/* ============ 匯入舊資料（移植自後端 migration）============ */
+function tradeOf(vendorName,category){
+  category=(category||'').trim();
+  if(category&&category!=='工程'&&category!=='其他') return category;
+  const vn=(vendorName||'').trim();
+  if(vn.includes('/')){ const pre=vn.split('/')[0].trim(); if(pre) return pre; }
+  return category||'其他';
+}
+function catId(kind,name){ name=(name||'').trim(); if(!name)return null;
+  let c=DB.categories.find(x=>x.kind===kind&&x.name===name);
+  if(c)return c.id; const id=nextId('categories'); DB.categories.push({id,kind,name,sort_order:999}); return id; }
+function vendorByName(name,trade){ name=(name||'').trim(); if(!name)return null;
+  let v=DB.vendors.find(x=>x.name===name); if(v)return v.id;
+  const id=nextId('vendors'); DB.vendors.push({id,legacy_id:'vn-'+name,name,category_id:catId('trade',trade),contact:'',tel:'',bank_name:'',bank_account:'',bank_holder:'',tax_id:'',note:''}); return id; }
+function hasLegacy(t,lid){ return DB[t].some(x=>x.legacy_id===lid); }
+const N=v=>Number(v)||0;
+
+function detectFormat(d){
+  if(d.periods||d['vendor-contracts']||d['company-expenses']) return 'local';
+  if(d.invoice_periods||String(d.backup_version||'').startsWith('2')) return 'flask';
+  return 'local';
+}
+const ST_MAP={'進行中':'active','施工中':'active','設計中':'lead','已完工':'completed','完工':'completed','暫停':'paused','已封存':'archived'};
+
+function migrateLegacy(data){
+  const c={}; const bump=k=>c[k]=(c[k]||0)+1;
+  const fmtP=detectFormat(data);
+  const pmap={},vmap={},cmap={};
+  if(fmtP==='local'){
+    (data.vendors||[]).forEach(v=>{ const lid='v'+v.id; if(hasLegacy('vendors',lid)){vmap[v.id]=DB.vendors.find(x=>x.legacy_id===lid).id;return;}
+      const id=nextId('vendors'); DB.vendors.push({id,legacy_id:lid,name:v.name||'',category_id:catId('trade',v.category||''),contact:v.contact||'',tel:v.tel||'',bank_name:v.bankName||'',bank_account:v.bankAccount||'',bank_holder:v.bankHolder||'',tax_id:v.taxId||'',note:v.note||''}); vmap[v.id]=id; bump('vendors'); });
+    (data.projects||[]).forEach(p=>{ const lid='p'+p.id; if(hasLegacy('projects',lid)){pmap[p.id]=DB.projects.find(x=>x.legacy_id===lid).id;return;}
+      const id=nextId('projects'); DB.projects.push({id,legacy_id:lid,code:'',name:p.name||'',client_name:p.client||p.clientName||'',client_tel:'',client_email:'',address:p.address||'',status:ST_MAP[p.status]||'active',start_date:p.startDate||'',end_date:p.endDate||'',design_fee:N(p.designContract),construction_contract:N(p.engineeringContract),note:p.note||''}); pmap[p.id]=id; bump('projects'); });
+    (data.periods||[]).forEach(pr=>{ const lid='per'+pr.id; if(hasLegacy('income',lid))return; const pid=pmap[pr.projectId]; if(!pid)return;
+      const it=pr.contractType==='設計費'?'設計費':'工程款'; const recv=(pr.status==='已收'||pr.status==='received');
+      DB.income.push({id:nextId('income'),legacy_id:lid,project_id:pid,date:pr.dueDate||'',due_date:pr.dueDate||'',period_no:pr.periodNo||1,type_id:catId('income_type',it),amount:N(pr.amount),tax_setting:pr.taxSetting||'未稅',bank_account:'',status:recv?'received':'pending',received_date:pr.receivedDate||'',invoice_no:pr.invoiceNo||'',note:pr.note||''}); bump('income'); });
+    (data['extra-works']||data.extras||[]).forEach(e=>{ const lid='ex'+e.id; if(hasLegacy('income',lid))return; const it=e.type==='追加'?'追加款':'減項';
+      DB.income.push({id:nextId('income'),legacy_id:lid,project_id:pmap[e.projectId]||null,date:e.date||'',due_date:e.date||'',period_no:1,type_id:catId('income_type',it),amount:N(e.amount),tax_setting:'未稅',bank_account:'',status:'received',received_date:e.date||'',invoice_no:e.invoiceNo||'',note:e.description||e.note||''}); bump('income_extra'); });
+    (data['vendor-contracts']||data.vcs||[]).forEach(vc=>{ const lid='vc'+vc.id; if(hasLegacy('contracts',lid)){cmap[vc.id]=DB.contracts.find(x=>x.legacy_id===lid).id;return;}
+      const trade=tradeOf(vc.vendorName,vc.category); const vid=vmap[vc.vendorId]||vendorByName(vc.vendorName,trade);
+      const id=nextId('contracts'); DB.contracts.push({id,legacy_id:lid,project_id:pmap[vc.projectId]||null,vendor_id:vid,category_id:catId('trade',trade),amount:N(vc.contractTotal),signed_date:'',note:vc.note||''}); cmap[vc.id]=id; bump('contracts'); });
+    const vcById={}; (data['vendor-contracts']||data.vcs||[]).forEach(x=>vcById[x.id]=x);
+    (data['vendor-payments']||data.vps||[]).forEach(vp=>{ const lid='vp'+vp.id; if(hasLegacy('expenses',lid))return;
+      const vc=vcById[vp.vendorContractId]; const vname=vp.vendorName||(vc?vc.vendorName:''); const trade=tradeOf(vname,vp.category);
+      const st=(['待付','pending','未付'].includes(String(vp.status)))?'pending':'paid';
+      DB.expenses.push({id:nextId('expenses'),legacy_id:lid,project_id:pmap[vp.projectId]||null,category_id:catId('trade',trade),vendor_id:vendorByName(vname,trade),contract_id:cmap[vp.vendorContractId]||null,item:vp.periodName||'',amount:N(vp.amount)+N(vp.fee),date:vp.date||'',due_date:'',status:st,tax_setting:vp.taxSetting||'',invoice_no:vp.invoiceNo||'',payment_method:vp.paymentMethod||'',note:vp.note||''}); bump('expenses'); });
+    (data.purchases||[]).forEach(pu=>{ if(pu.returned==='是')return; const lid='pu'+pu.id; if(hasLegacy('expenses',lid))return;
+      DB.expenses.push({id:nextId('expenses'),legacy_id:lid,project_id:pmap[pu.projectId]||null,category_id:catId('trade','材料採購'),vendor_id:null,contract_id:null,item:pu.item||pu.name||'',amount:N(pu.amount),date:pu.date||'',due_date:'',status:'paid',tax_setting:'',invoice_no:'',payment_method:'',note:pu.note||''}); bump('expenses_purchase'); });
+    (data['company-expenses']||data.coExpenses||[]).forEach(ce=>{ const lid='ce'+ce.id; if(hasLegacy('expenses',lid))return;
+      DB.expenses.push({id:nextId('expenses'),legacy_id:lid,project_id:null,category_id:catId('company_expense',ce.category||'其他'),vendor_id:null,contract_id:null,item:ce.item||'',amount:N(ce.amount),date:ce.date||'',due_date:'',status:'paid',tax_setting:ce.taxSetting||'',invoice_no:ce.invoiceNo||'',payment_method:ce.paymentMethod||'',note:ce.note||''}); bump('expenses_company'); });
+    (data['pending-payments']||[]).forEach(pp=>{ const lid='pp'+pp.id; if(hasLegacy('expenses',lid))return; const trade=tradeOf(pp.vendorName,pp.category);
+      DB.expenses.push({id:nextId('expenses'),legacy_id:lid,project_id:pmap[pp.projectId]||null,category_id:catId('trade',trade),vendor_id:vendorByName(pp.vendorName,trade),contract_id:null,item:pp.category||'',amount:N(pp.amount),date:'',due_date:pp.dueDate||'',status:'pending',tax_setting:'',invoice_no:'',payment_method:pp.paymentMethod||'',note:pp.note||''}); bump('expenses_pending'); });
+  } else {
+    (data.vendors||[]).forEach(v=>{ const lid='fv'+v.id; if(hasLegacy('vendors',lid)){vmap[v.id]=DB.vendors.find(x=>x.legacy_id===lid).id;return;}
+      const id=nextId('vendors'); DB.vendors.push({id,legacy_id:lid,name:v.name||'',category_id:catId('trade',v.category||''),contact:v.contact||'',tel:v.tel||'',bank_name:v.bank_name||'',bank_account:v.bank_account||'',bank_holder:v.bank_holder||'',tax_id:'',note:v.note||''}); vmap[v.id]=id; bump('vendors'); });
+    (data.projects||[]).forEach(p=>{ const lid='fp'+p.id; if(hasLegacy('projects',lid)){pmap[p.id]=DB.projects.find(x=>x.legacy_id===lid).id;return;}
+      const id=nextId('projects'); DB.projects.push({id,legacy_id:lid,code:p.code||'',name:p.name||'',client_name:p.client_name||'',client_tel:p.client_tel||'',client_email:p.client_email||'',address:p.address||'',status:p.status||'active',start_date:p.start_date||'',end_date:'',design_fee:N(p.design_contract),construction_contract:N(p.engineering_contract),note:p.note||''}); pmap[p.id]=id; bump('projects'); });
+    (data.invoice_periods||[]).forEach(ip=>{ const lid='fip'+ip.id; if(hasLegacy('income',lid))return; const pid=pmap[ip.project_id]; if(!pid)return;
+      const it=ip.contract_type==='design'?'設計費':'工程款'; const recv=ip.status==='received';
+      DB.income.push({id:nextId('income'),legacy_id:lid,project_id:pid,date:ip.due_date||'',due_date:ip.due_date||'',period_no:ip.period_no||1,type_id:catId('income_type',it),amount:N(ip.amount),tax_setting:ip.tax_setting||'未稅',bank_account:'',status:recv?'received':'pending',received_date:ip.received_date||'',invoice_no:ip.invoice_no||'',note:ip.note||''}); bump('income'); });
+    (data.vendor_contracts||[]).forEach(vc=>{ const lid='fvc'+vc.id; if(hasLegacy('contracts',lid)){cmap[vc.id]=DB.contracts.find(x=>x.legacy_id===lid).id;return;}
+      const id=nextId('contracts'); DB.contracts.push({id,legacy_id:lid,project_id:pmap[vc.project_id]||null,vendor_id:vmap[vc.vendor_id]||null,category_id:catId('trade',vc.category||''),amount:N(vc.amount),signed_date:'',note:vc.note||''}); cmap[vc.id]=id; bump('contracts'); });
+    (data.vendor_payments||[]).forEach(vp=>{ const lid='fvp'+vp.id; if(hasLegacy('expenses',lid))return;
+      DB.expenses.push({id:nextId('expenses'),legacy_id:lid,project_id:pmap[vp.project_id]||null,category_id:catId('trade',vp.category||''),vendor_id:vmap[vp.vendor_id]||null,contract_id:null,item:vp.period_name||'',amount:N(vp.amount)+N(vp.fee),date:vp.date||'',due_date:'',status:(['已付','paid'].includes(vp.status))?'paid':'pending',tax_setting:vp.tax_setting||'',invoice_no:vp.invoice_no||'',payment_method:vp.payment_method||'',note:vp.note||''}); bump('expenses'); });
+    (data.vendor_invoices||[]).forEach(vi=>{ const lid='fvi'+vi.id; if(hasLegacy('expenses',lid))return;
+      DB.expenses.push({id:nextId('expenses'),legacy_id:lid,project_id:pmap[vi.project_id]||null,category_id:null,vendor_id:vmap[vi.vendor_id]||null,contract_id:null,item:vi.period_name||'',amount:N(vi.amount),date:vi.paid_date||'',due_date:vi.due_date||'',status:vi.status==='paid'?'paid':'pending',tax_setting:vi.tax_setting||'',invoice_no:vi.invoice_no||'',payment_method:vi.payment_method||'',note:vi.note||''}); bump('expenses_inv'); });
+    (data.company_expenses||[]).forEach(ce=>{ const lid='fce'+ce.id; if(hasLegacy('expenses',lid))return;
+      DB.expenses.push({id:nextId('expenses'),legacy_id:lid,project_id:null,category_id:catId('company_expense',ce.category||'其他'),vendor_id:null,contract_id:null,item:ce.item||'',amount:N(ce.amount),date:ce.date||'',due_date:'',status:'paid',tax_setting:ce.tax_setting||'',invoice_no:ce.invoice_no||'',payment_method:ce.payment_method||'',note:ce.note||''}); bump('expenses_company'); });
+    (data.extra_works||[]).forEach(e=>{ const lid='fex'+e.id; if(hasLegacy('income',lid))return; const it=e.type==='追加'?'追加款':'減項';
+      DB.income.push({id:nextId('income'),legacy_id:lid,project_id:pmap[e.project_id]||null,date:e.date||'',due_date:e.date||'',period_no:1,type_id:catId('income_type',it),amount:N(e.amount),tax_setting:'未稅',bank_account:'',status:'received',received_date:e.date||'',invoice_no:'',note:e.description||e.note||''}); bump('income_extra'); });
+  }
+  save();
+  return {imported:c, reconcile:reconcile(data)};
+}
+function reconcile(data){
+  const fmtP=detectFormat(data);
+  const S=(arr,k,fee)=>sum(arr||[],x=>N(x[k||'amount'])+(fee?N(x[fee]):0));
+  const extraNet=arr=>sum(arr||[],e=>e.type==='減項'?-N(e.amount):N(e.amount));
+  let oi,oe;
+  if(fmtP==='flask'){
+    oi=S((data.invoice_periods||[]).filter(p=>p.status==='received'))+extraNet(data.extra_works);
+    oe=S((data.vendor_payments||[]).filter(v=>!['待付','pending','未付'].includes(String(v.status))),'amount','fee')+S(data.company_expenses)+S((data.vendor_invoices||[]).filter(v=>v.status==='paid'));
+  } else {
+    oi=S((data.periods||[]).filter(p=>p.status==='已收'))+extraNet(data['extra-works']||data.extras);
+    oe=S((data['vendor-payments']||data.vps||[]).filter(v=>!['待付','pending','未付'].includes(String(v.status))),'amount','fee')+S((data.purchases||[]).filter(p=>p.returned!=='是'))+S(data['company-expenses']||data.coExpenses);
+  }
+  const ni=sum(DB.income.filter(i=>i.status==='received'),i=>i.amount);
+  const ne=sum(DB.expenses.filter(e=>e.status==='paid'),e=>e.amount);
+  return {format:fmtP, income:{old:Math.round(oi),new:Math.round(ni),diff:Math.round(ni-oi)}, expense:{old:Math.round(oe),new:Math.round(ne),diff:Math.round(ne-oe)}};
+}
+
+/* ============ 分析（移植自 analytics_v3）============ */
+function summ(p){
+  const inc=DB.income.filter(i=>i.project_id==p.id), exp=DB.expenses.filter(e=>e.project_id==p.id);
+  const add=sum(inc.filter(i=>catName(i.type_id)==='追加款'),i=>i.amount);
+  const ded=sum(inc.filter(i=>catName(i.type_id)==='減項'),i=>i.amount);
+  const recv=sum(inc.filter(i=>i.status==='received'),i=>i.amount);
+  const pend=sum(inc.filter(i=>i.status==='pending'),i=>i.amount);
+  const paid=sum(exp.filter(e=>e.status==='paid'),e=>e.amount);
+  const unpaid=sum(exp.filter(e=>e.status==='pending'),e=>e.amount);
+  const budget=sum(DB.contracts.filter(c=>c.project_id==p.id),c=>c.amount);
+  const base=N(p.design_fee)+N(p.construction_contract)+add-ded;
+  const est=base<=0; const total=est?(recv+pend):base;
+  const profit=recv-paid;
+  return {...p,add,deduct:ded,total_price:total,price_est:est,received:recv,pending:pend,paid,unpaid,budget,actual_cost:paid,profit,margin:recv?profit/recv*100:0,recv_pct:total?recv/total*100:0,cost_pct:budget?paid/budget*100:0};
+}
+function projectRows(){ return DB.projects.map(summ).sort((a,b)=>b.id-a.id); }
+function ym(s){return (s||'').slice(0,7);} function yr(s){return (s||'').slice(0,4);}
+function dashboard(y,m){
+  const ymk=y+'-'+String(m).padStart(2,'0'), ys=''+y;
+  const inRecv=DB.income.filter(i=>i.status==='received');
+  const rdate=i=>i.received_date||i.due_date;
+  const mi=sum(inRecv.filter(i=>ym(rdate(i))===ymk),i=>i.amount);
+  const me=sum(DB.expenses.filter(e=>e.status==='paid'&&ym(e.date)===ymk),e=>e.amount);
+  const yi=sum(inRecv.filter(i=>yr(rdate(i))===ys),i=>i.amount);
+  const ye=sum(DB.expenses.filter(e=>e.status==='paid'&&yr(e.date)===ys),e=>e.amount);
+  const unrecv=sum(DB.income.filter(i=>i.status==='pending'),i=>i.amount);
+  const unpaid=sum(DB.expenses.filter(e=>e.status==='pending'),e=>e.amount);
+  const pc={}; DB.projects.forEach(p=>pc[p.status]=(pc[p.status]||0)+1);
+  return {year:y,month:m,month_income:mi,month_expense:me,month_profit:mi-me,month_margin:mi?(mi-me)/mi*100:0,unreceived:unrecv,unpaid,year_income:yi,year_cost:ye,year_profit:yi-ye,total_projects:DB.projects.length,active:pc.active||0,lead:pc.lead||0,completed:pc.completed||0};
+}
+function monthly(y){ const ys=''+y; const rows=[]; for(let i=1;i<=12;i++){const mk=ys+'-'+String(i).padStart(2,'0');
+  const inc=sum(DB.income.filter(x=>x.status==='received'&&ym(x.received_date||x.due_date)===mk),x=>x.amount);
+  const exp=sum(DB.expenses.filter(x=>x.status==='paid'&&ym(x.date)===mk),x=>x.amount);
+  rows.push({m:i,income:inc,expense:exp,profit:inc-exp});} return rows; }
+function tradeAnalysis(y){ const map={};
+  DB.expenses.filter(e=>e.status==='paid'&&(!y||yr(e.date)==''+y)).forEach(e=>{const c=byId('categories',e.category_id); if(!c||c.kind!=='trade')return; if(!map[c.name])map[c.name]={name:c.name,total:0,cnt:0}; map[c.name].total+=N(e.amount); map[c.name].cnt++;});
+  return Object.values(map).sort((a,b)=>b.total-a.total); }
+function vendorAnalysis(){ return DB.vendors.map(v=>{ const ex=DB.expenses.filter(e=>e.vendor_id==v.id);
+  return {id:v.id,name:v.name,paid:sum(ex.filter(e=>e.status==='paid'),e=>e.amount),unpaid:sum(ex.filter(e=>e.status==='pending'),e=>e.amount),projects:new Set(ex.map(e=>e.project_id).filter(Boolean)).size,cnt:ex.length}; })
+  .filter(v=>v.paid>0||v.unpaid>0||true).sort((a,b)=>b.paid-a.paid||a.name.localeCompare(b.name)); }
+function cashflow(y){ const ys=''+y; const rows=[]; for(let i=1;i<=12;i++){const mk=ys+'-'+String(i).padStart(2,'0');
+  rows.push({m:i,
+    inc_actual:sum(DB.income.filter(x=>x.status==='received'&&ym(x.received_date||x.due_date)===mk),x=>x.amount),
+    exp_actual:sum(DB.expenses.filter(x=>x.status==='paid'&&ym(x.date)===mk),x=>x.amount)});} return rows; }
+function budgetVsActual(){ const b={},a={};
+  DB.contracts.forEach(c=>{const n=catName(c.category_id)||'其他'; b[n]=(b[n]||0)+N(c.amount);});
+  DB.expenses.filter(e=>e.status==='paid').forEach(e=>{const n=catName(e.category_id)||'其他'; a[n]=(a[n]||0)+N(e.amount);});
+  const names=[...new Set([...Object.keys(b),...Object.keys(a)])].sort((x,y)=>((b[y]||0)+(a[y]||0))-((b[x]||0)+(a[x]||0)));
+  return names.map(n=>({name:n,budget:b[n]||0,actual:a[n]||0,diff:(b[n]||0)-(a[n]||0)})); }
+
+/* ============ 導覽 ============ */
+let VIEW={page:'dashboard',pid:null};
+let EF={project:'',trade:'',vendor:'',year:'',status:'',q:'',group:false}; // 支出篩選
+let IFLT={project:'',type:'',status:''}; // 收入篩選
+function nav(page,pid){ VIEW={page,pid:pid||null}; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.p===page)); render(); window.scrollTo(0,0); }
+document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a'); if(a)nav(a.dataset.p);});
+function render(){ const el=document.getElementById('app'); const P=VIEW.page;
+  el.innerHTML = P==='dashboard'?vDash(): P==='projects'?vProjects(): P==='project'?vProjectDetail(VIEW.pid): P==='income'?vIncome(): P==='expenses'?vExpenses(): P==='vendors'?vVendors(): P==='analysis'?vAnalysis(): P==='settings'?vSettings(): vDash();
+}
+
+/* ============ 頁面 ============ */
+function kpi(l,v,cls,s){return `<div class="kpi"><div class="l">${l}</div><div class="v mono ${cls||''}">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`;}
+function vDash(){
+  const now=new Date(); const d=dashboard(now.getFullYear(),now.getMonth()+1); const ms=monthly(d.year); const tr=tradeAnalysis(d.year); const pr=projectRows();
+  const mx=Math.max(1,...ms.map(x=>Math.max(x.income,x.expense)));
+  const tmax=tr.length?tr[0].total:1;
+  return `<div class="head"><div><div class="h1">財務總覽</div><div class="sub">${d.year} 年 ${d.month} 月 · 資料由核心表即時計算</div></div></div>
+  <div class="kpis">
+    ${kpi('本月收入',fmt(d.month_income),'g','NT$')}${kpi('本月支出',fmt(d.month_expense),'r','NT$')}
+    ${kpi('本月毛利',fmt(d.month_profit),d.month_profit>=0?'g':'r','毛利率 '+d.month_margin.toFixed(0)+'%')}
+    ${kpi('未收款',fmt(d.unreceived),'a','應收')}${kpi('未付款',fmt(d.unpaid),'a','應付')}
+    ${kpi('專案數',d.total_projects,'','施工 '+d.active+' · 設計 '+d.lead)}
+    ${kpi('今年收入',fmt(d.year_income),'g',d.year+' 累計')}${kpi('今年成本',fmt(d.year_cost),'r',d.year+' 累計')}
+    ${kpi('今年毛利',fmt(d.year_profit),d.year_profit>=0?'g':'r',d.year+' 累計')}
+    ${kpi('施工中案件',d.active,'b','')}${kpi('設計中案件',d.lead,'','')}${kpi('已完工',d.completed,'','')}
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>每月收入 / 支出（${d.year}）</h3><div class="cols">${ms.map(m=>`<div class="col" title="${m.m}月 收${fmt(m.income)} 支${fmt(m.expense)}"><div style="display:flex;gap:2px;align-items:flex-end;height:100%;width:80%"><div style="flex:1;background:var(--green);border-radius:3px 3px 0 0;height:${(m.income/mx*100).toFixed(1)}%"></div><div style="flex:1;background:var(--red);border-radius:3px 3px 0 0;height:${(m.expense/mx*100).toFixed(1)}%"></div></div><small>${m.m}</small></div>`).join('')}</div><div class="legend"><span><i style="background:var(--green)"></i>收入</span><span><i style="background:var(--red)"></i>支出</span></div></div>
+    <div class="card"><h3>工種成本比例（${d.year}）</h3>${tr.slice(0,8).map(t=>`<div class="bar-row"><span>${esc(t.name)}</span><div class="bar-track"><div class="bar-fill" style="width:${(t.total/tmax*100).toFixed(1)}%"></div></div><span class="r mono">${fmt(t.total)}</span></div>`).join('')||'<div class="empty">尚無支出</div>'}</div>
+  </div>
+  <div class="card"><h3>專案毛利排行</h3><table><thead><tr><th>專案</th><th>狀態</th><th class="r">已收</th><th class="r">實際成本</th><th class="r">毛利</th><th class="r">毛利率</th></tr></thead><tbody>
+  ${pr.slice().sort((a,b)=>b.profit-a.profit).map(p=>`<tr><td style="font-weight:600"><a class="linkc" onclick="nav('project',${p.id})">${esc(p.name)}</a></td><td><span class="tag ${p.status==='active'?'bl':''}">${STATUS_ZH[p.status]||p.status}</span></td><td class="r mono g">${fmt(p.received)}</td><td class="r mono r">${fmt(p.actual_cost)}</td><td class="r mono ${p.profit>=0?'g':'r'}">${fmt(p.profit)}</td><td class="r mono">${p.margin.toFixed(0)}%</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+function vProjects(){ const rows=projectRows();
+  return `<div class="head"><div><div class="h1">專案</div><div class="sub">收入、成本、毛利即時彙整</div></div><button class="btn p" onclick="newProj()">＋ 新增專案</button></div>
+  <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>專案</th><th>業主</th><th>狀態</th><th class="r">設計費</th><th class="r">工程合約</th><th class="r">追加</th><th class="r">工程總價</th><th class="r">已收</th><th class="r">未收</th><th class="r">已付</th><th class="r">未付</th><th class="r">實際成本</th><th class="r">毛利</th><th class="r">毛利率</th><th></th></tr></thead><tbody>
+  ${rows.map(p=>`<tr><td style="font-weight:600"><a class="linkc" onclick="nav('project',${p.id})">${esc(p.name)}</a></td><td style="color:var(--mid)">${esc(p.client_name)||'—'}</td><td><span class="tag ${p.status==='active'?'bl':''}">${STATUS_ZH[p.status]||p.status}</span></td><td class="r mono">${fmt(p.design_fee)}</td><td class="r mono">${fmt(p.construction_contract)}</td><td class="r mono">${p.add?fmt(p.add):'—'}</td><td class="r mono" style="font-weight:600">${fmt(p.total_price)}</td><td class="r mono g">${fmt(p.received)}</td><td class="r mono a">${p.pending?fmt(p.pending):'—'}</td><td class="r mono">${fmt(p.paid)}</td><td class="r mono a">${p.unpaid?fmt(p.unpaid):'—'}</td><td class="r mono r">${fmt(p.actual_cost)}</td><td class="r mono ${p.profit>=0?'g':'r'}" style="font-weight:600">${fmt(p.profit)}</td><td class="r mono">${p.margin.toFixed(0)}%</td><td style="white-space:nowrap"><span class="iconbtn" onclick="editProj(${p.id})">編輯</span></td></tr>`).join('')||'<tr><td colspan="15" class="empty">尚無專案</td></tr>'}
+  </tbody></table></div>`;
+}
+
+function vProjectDetail(pid){ const p0=byId('projects',pid); if(!p0)return '<div class="empty">找不到專案</div>'; const p=summ(p0);
+  const inc=DB.income.filter(i=>i.project_id==pid).sort((a,b)=>(a.status||'').localeCompare(b.status)||(a.due_date||'').localeCompare(b.due_date));
+  const exp=DB.expenses.filter(e=>e.project_id==pid).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const grouped={}; exp.forEach(e=>{const n=catName(e.category_id)||'未分類'; (grouped[n]=grouped[n]||[]).push(e);});
+  const gkeys=Object.keys(grouped).sort((x,y)=>sum(grouped[y],e=>e.amount)-sum(grouped[x],e=>e.amount));
+  const expTotal=sum(exp,e=>e.amount);
+  const contracts=DB.contracts.filter(c=>c.project_id==pid).map(c=>({...c,paid:sum(DB.expenses.filter(e=>e.contract_id==c.id&&e.status==='paid'),e=>e.amount)})).map(c=>({...c,remain:N(c.amount)-c.paid})).sort((a,b)=>b.amount-a.amount);
+  return `<div style="font-size:12px;color:var(--mid);margin-bottom:10px"><a onclick="nav('projects')" style="color:var(--mid)">← 專案</a> / ${esc(p.name)}</div>
+  <div class="head"><div><div class="h1">${esc(p.name)} <span class="tag ${p.status==='active'?'bl':''}" style="vertical-align:middle;margin-left:6px">${STATUS_ZH[p.status]||p.status}</span></div>
+  <div class="sub">${esc(p.client_name)||'—'}${p.address?' · '+esc(p.address):''}${p.start_date?' · 開工 '+p.start_date:''}${p.end_date?' · 完工 '+p.end_date:''}</div></div>
+  <div style="text-align:right"><div class="sub" style="margin:0">毛利 / 毛利率</div><div class="mono ${p.profit>=0?'g':'r'}" style="font-size:24px;font-weight:700">${money(p.profit)} <span style="font-size:15px">(${p.margin.toFixed(0)}%)</span></div><button class="btn" style="margin-top:6px" onclick="editProj(${p.id})">編輯專案</button></div></div>
+  <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+    ${kpi('工程總價',fmt(p.total_price),'',p.price_est?'＝已收＋未收（合約未輸入）':('設計'+fmt(p.design_fee)+' + 工程'+fmt(p.construction_contract)+(p.add?' + 追加'+fmt(p.add):'')))}
+    ${kpi('已收 / 未收','<span class="g">'+fmt(p.received)+'</span> <span class="s" style="font-size:13px">/ '+fmt(p.pending)+'</span>','','收款進度 '+p.recv_pct.toFixed(0)+'%')}
+    ${kpi('已付 / 未付','<span class="r">'+fmt(p.paid)+'</span> <span class="s" style="font-size:13px">/ '+fmt(p.unpaid)+'</span>','','實際成本')}
+    ${kpi('預估成本（發包）',fmt(p.budget),'a','成本執行 '+p.cost_pct.toFixed(0)+'%')}
+  </div>
+  <div class="card"><div style="display:flex;gap:26px;flex-wrap:wrap">
+    <div style="flex:1;min-width:240px"><div class="sub" style="margin-bottom:6px">收款進度 ${fmt(p.received)} / ${fmt(p.total_price)}</div><div class="bar-track" style="height:20px"><div class="bar-fill gr" style="width:${Math.min(p.recv_pct,100).toFixed(1)}%"></div></div></div>
+    <div style="flex:1;min-width:240px"><div class="sub" style="margin-bottom:6px">成本執行 ${fmt(p.paid)} / 預估 ${fmt(p.budget)}</div><div class="bar-track" style="height:20px"><div class="bar-fill ${p.cost_pct>100?'rd':'am'}" style="width:${Math.min(p.cost_pct,100).toFixed(1)}%"></div></div></div>
+  </div></div>
+  <div class="grid2">
+    <div class="card" style="padding:0;overflow:hidden"><h3 style="padding:16px 18px 0">收入明細（請款期數）</h3><table style="margin-top:10px"><thead><tr><th>應收日</th><th>期數/說明</th><th>類型</th><th class="r">金額</th><th>狀態</th></tr></thead><tbody>
+    ${inc.map(i=>`<tr><td class="mono" style="color:var(--mid)">${i.due_date||'—'}</td><td style="color:var(--mid)">${esc(i.note)||('第'+i.period_no+'期')}</td><td><span class="tag bl">${esc(catName(i.type_id))||'—'}</span></td><td class="r mono" style="font-weight:600">${fmt(i.amount)}</td><td>${i.status==='received'?'<span class="tag gr">已收</span>':'<span class="tag am">未收</span>'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">尚無收入</td></tr>'}
+    </tbody></table></div>
+    <div class="card" style="padding:0;overflow:hidden"><h3 style="padding:16px 18px 0">發包合約 vs 已付（防超付）</h3><table style="margin-top:10px"><thead><tr><th>工種</th><th>廠商</th><th class="r">合約</th><th class="r">已付</th><th class="r">剩餘</th></tr></thead><tbody>
+    ${contracts.map(c=>`<tr><td><span class="tag">${esc(catName(c.category_id))||'—'}</span></td><td>${esc(venName(c.vendor_id))||'—'}</td><td class="r mono">${fmt(c.amount)}</td><td class="r mono">${fmt(c.paid)}</td><td class="r mono ${c.remain<0?'r':''}">${fmt(c.remain)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">尚無發包合約</td></tr>'}
+    </tbody></table></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden"><h3 style="padding:16px 18px 0">支出明細（依工種）· 合計 ${money(expTotal)}</h3><table style="margin-top:10px"><thead><tr><th>日期</th><th>廠商</th><th>品項</th><th>付款方式</th><th>稅別</th><th class="r">金額</th><th>發票</th><th>狀態</th><th>備註</th></tr></thead><tbody>
+  ${gkeys.map(tn=>{const items=grouped[tn];const sub=sum(items,e=>e.amount);return `<tr class="grp"><td colspan="5">▎${esc(tn)}（${items.length} 筆）${expTotal?' · 占成本 '+(sub/expTotal*100).toFixed(0)+'%':''}</td><td class="r mono">${fmt(sub)}</td><td colspan="3"></td></tr>`+items.map(r=>`<tr><td class="mono" style="color:var(--mid)">${r.date||'—'}</td><td style="font-weight:500">${esc(venName(r.vendor_id))||'—'}</td><td style="color:var(--mid)">${esc(r.item)}</td><td style="color:var(--mid);font-size:12px">${PAY_ZH[r.payment_method]||r.payment_method||'—'}</td><td style="font-size:12px">${r.tax_setting?'<span class="tag">'+esc(r.tax_setting)+'</span>':'<span style="color:var(--muted)">—</span>'}</td><td class="r mono" style="font-weight:600">${fmt(r.amount)}</td><td>${r.invoice_no?'<span class="tag gr">'+esc(r.invoice_no)+'</span>':'<span style="color:var(--muted)">無</span>'}</td><td>${r.status==='paid'?'<span class="tag gr">已付</span>':'<span class="tag am">未付</span>'}</td><td>${r.note?`<span class="iconbtn" onclick="document.getElementById('n${r.id}').classList.toggle('hide')">📝</span>`:''}</td></tr>`+(r.note?`<tr id="n${r.id}" class="note-row hide"><td colspan="9" style="padding:8px 14px">${esc(String(r.note).split('TG-photo')[0].split('| TG')[0].trim()||r.note)}</td></tr>`:'')).join('');}).join('')||'<tr><td colspan="9" class="empty">尚無支出</td></tr>'}
+  </tbody></table></div>`;
+}
+
+function opts(arr,sel,val,txt){return arr.map(o=>`<option value="${o[val||'id']}" ${String(sel)===String(o[val||'id'])?'selected':''}>${esc(o[txt||'name'])}</option>`).join('');}
+function vIncome(){
+  let rows=DB.income.slice();
+  if(IFLT.project)rows=rows.filter(r=>String(r.project_id)===IFLT.project);
+  if(IFLT.type)rows=rows.filter(r=>String(r.type_id)===IFLT.type);
+  if(IFLT.status)rows=rows.filter(r=>r.status===IFLT.status);
+  rows.sort((a,b)=>(b.due_date||'').localeCompare(a.due_date||''));
+  const total=sum(rows,r=>r.amount), recv=sum(rows.filter(r=>r.status==='received'),r=>r.amount);
+  return `<div class="head"><div><div class="h1">收入管理</div><div class="sub">業主請款、追加款、退款統一管理</div></div>
+  <div style="text-align:right"><div class="mono g" style="font-size:20px;font-weight:700">已收 ${money(recv)}</div><div class="sub" style="margin:0 0 6px">合計 ${money(total)}</div><button class="btn p" onclick="newInc()">＋ 新增收入</button></div></div>
+  <div class="filters">
+    <select onchange="IFLT.project=this.value;render()"><option value="">全部專案</option>${opts(DB.projects,IFLT.project)}</select>
+    <select onchange="IFLT.type=this.value;render()"><option value="">全部類型</option>${opts(cats('income_type'),IFLT.type)}</select>
+    <select onchange="IFLT.status=this.value;render()"><option value="">全部狀態</option><option value="received" ${IFLT.status==='received'?'selected':''}>已收</option><option value="pending" ${IFLT.status==='pending'?'selected':''}>未收</option></select>
+  </div>
+  <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>應收日</th><th>專案</th><th>期數/說明</th><th>類型</th><th class="r">金額</th><th>銀行</th><th>狀態</th><th></th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td class="mono" style="color:var(--mid)">${r.due_date||'—'}</td><td style="font-weight:500">${esc(projName(r.project_id))||'—'}</td><td style="color:var(--mid)">${esc(r.note)||('第'+r.period_no+'期')}</td><td><span class="tag bl">${esc(catName(r.type_id))||'—'}</span></td><td class="r mono" style="font-weight:600">${fmt(r.amount)}</td><td class="mono" style="color:var(--muted);font-size:12px">${esc(r.bank_account)||'—'}</td><td>${r.status==='received'?`<span class="tag gr" style="cursor:pointer" onclick="toggleRecv(${r.id},false)">已收</span>`:`<span class="tag am" style="cursor:pointer" onclick="toggleRecv(${r.id},true)">未收 ▸</span>`}</td><td style="white-space:nowrap"><span class="iconbtn" onclick="editInc(${r.id})">編輯</span><span class="iconbtn" style="color:var(--red)" onclick="delRow('income',${r.id})">刪</span></td></tr>`).join('')||'<tr><td colspan="8" class="empty">沒有符合條件的收入</td></tr>'}
+  </tbody><tfoot><tr><td colspan="4">合計 ${rows.length} 筆</td><td class="r mono">${money(total)}</td><td colspan="3"></td></tr></tfoot></table></div>`;
+}
+
+function vExpenses(){
+  let rows=DB.expenses.slice();
+  if(EF.project)rows=rows.filter(r=>String(r.project_id)===EF.project);
+  if(EF.trade)rows=rows.filter(r=>String(r.category_id)===EF.trade);
+  if(EF.vendor)rows=rows.filter(r=>String(r.vendor_id)===EF.vendor);
+  if(EF.status)rows=rows.filter(r=>r.status===EF.status);
+  if(EF.year)rows=rows.filter(r=>yr(r.date)===EF.year);
+  if(EF.q){const q=EF.q.toLowerCase();rows=rows.filter(r=>((r.item||'')+venName(r.vendor_id)+(r.note||'')).toLowerCase().includes(q));}
+  rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const total=sum(rows,r=>r.amount);
+  const paidByCt={}; DB.expenses.filter(e=>e.status==='paid'&&e.contract_id).forEach(e=>paidByCt[e.contract_id]=(paidByCt[e.contract_id]||0)+N(e.amount));
+  const rowHtml=r=>{const ct=r.contract_id?byId('contracts',r.contract_id):null; const camt=ct?N(ct.amount):null; const cum=r.contract_id?(paidByCt[r.contract_id]||0):null; const rem=camt!=null?camt-cum:null;
+    return `<tr><td class="mono" style="color:var(--mid)">${r.date||'—'}</td><td>${esc(projName(r.project_id))||'—'}</td><td><span class="tag">${esc(catName(r.category_id))||'—'}</span></td><td style="font-weight:500">${esc(venName(r.vendor_id))||'—'}</td><td style="color:var(--mid)">${esc(r.item)}</td><td class="r mono">${camt!=null?fmt(camt):'—'}</td><td class="r mono" style="font-weight:600">${fmt(r.amount)}</td><td class="r mono" style="color:var(--mid)">${cum!=null?fmt(cum):'—'}</td><td class="r mono ${rem!=null&&rem>0?'r':''}">${rem!=null?fmt(rem):'—'}</td><td>${r.invoice_no?'<span class="tag gr">'+esc(r.invoice_no)+'</span>':'<span style="color:var(--muted)">無</span>'}</td><td>${r.status==='paid'?'<span class="tag gr">已付</span>':'<span class="tag am">未付</span>'}</td><td style="white-space:nowrap"><span class="iconbtn" onclick="editExp(${r.id})">編輯</span><span class="iconbtn" style="color:var(--red)" onclick="delRow('expenses',${r.id})">刪</span></td></tr>`;};
+  let body='';
+  if(EF.group){ const g={}; rows.forEach(r=>{const n=catName(r.category_id)||'未分類';(g[n]=g[n]||[]).push(r);}); Object.keys(g).sort((x,y)=>sum(g[y],e=>e.amount)-sum(g[x],e=>e.amount)).forEach(n=>{ body+=`<tr class="grp"><td colspan="6">▎${esc(n)}（${g[n].length} 筆）</td><td class="r mono" colspan="6">${money(sum(g[n],e=>e.amount))}</td></tr>`+g[n].map(rowHtml).join(''); }); }
+  else body=rows.map(rowHtml).join('');
+  return `<div class="head"><div><div class="h1">支出管理</div><div class="sub">每筆付款一列 · 可搜尋 / 篩選 / 依工種分組</div></div>
+  <div style="text-align:right"><div class="mono" style="font-size:20px;font-weight:700">${money(total)}</div><button class="btn p" style="margin-top:6px" onclick="newExp()">＋ 新增支出</button></div></div>
+  <div class="filters">
+    <input type="search" placeholder="搜尋 品項/廠商/備註" value="${esc(EF.q)}" oninput="EF.q=this.value" onkeydown="if(event.key==='Enter')render()">
+    <select onchange="EF.project=this.value;render()"><option value="">全部專案</option>${opts(DB.projects,EF.project)}</select>
+    <select onchange="EF.trade=this.value;render()"><option value="">全部工種</option>${opts(cats('trade'),EF.trade)}</select>
+    <select onchange="EF.vendor=this.value;render()"><option value="">全部廠商</option>${opts(DB.vendors.slice().sort((a,b)=>a.name.localeCompare(b.name)),EF.vendor)}</select>
+    <select onchange="EF.year=this.value;render()"><option value="">全部年份</option>${opts([...new Set(DB.expenses.map(e=>yr(e.date)).filter(Boolean))].sort().reverse().map(y=>({id:y,name:y})),EF.year)}</select>
+    <select onchange="EF.status=this.value;render()"><option value="">全部狀態</option><option value="paid" ${EF.status==='paid'?'selected':''}>已付</option><option value="pending" ${EF.status==='pending'?'selected':''}>未付</option></select>
+    <span class="seg"><a class="${!EF.group?'on':''}" onclick="EF.group=false;render()">明細</a><a class="${EF.group?'on':''}" onclick="EF.group=true;render()">依工種</a></span>
+  </div>
+  <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>日期</th><th>專案</th><th>工種</th><th>廠商</th><th>品項</th><th class="r">合約金額</th><th class="r">本次付款</th><th class="r">累積付款</th><th class="r">剩餘未付</th><th>發票</th><th>狀態</th><th></th></tr></thead>
+  <tbody>${body||'<tr><td colspan="12" class="empty">沒有符合條件的支出</td></tr>'}</tbody>
+  <tfoot><tr><td colspan="6">合計 ${rows.length} 筆</td><td class="r mono">${money(total)}</td><td colspan="5"></td></tr></tfoot></table></div>`;
+}
+
+function vVendors(){ const rows=vendorAnalysis();
+  return `<div class="head"><div><div class="h1">廠商</div><div class="sub">合作案件數、合作總金額、未付款</div></div></div>
+  <div class="addbar"><button class="btn" onclick="openMerge()">合併重複廠商</button><button class="btn p" onclick="newVen()">＋ 新增廠商</button></div>
+  <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>廠商</th><th>工種</th><th class="r">合作案件</th><th class="r">付款筆數</th><th class="r">已付總額</th><th class="r">未付款</th><th></th></tr></thead><tbody>
+  ${rows.map(v=>{const vd=byId('vendors',v.id);return `<tr><td style="font-weight:600">${esc(v.name)}</td><td style="color:var(--mid)">${esc(catName(vd&&vd.category_id))||'—'}</td><td class="r mono">${v.projects}</td><td class="r mono" style="color:var(--mid)">${v.cnt}</td><td class="r mono">${fmt(v.paid)}</td><td class="r mono ${v.unpaid?'r':''}">${v.unpaid?fmt(v.unpaid):'—'}</td><td style="white-space:nowrap"><span class="iconbtn" onclick="editVen(${v.id})">編輯</span><span class="iconbtn" style="color:var(--red)" onclick="delRow('vendors',${v.id})">刪</span></td></tr>`;}).join('')||'<tr><td colspan="7" class="empty">尚無廠商</td></tr>'}
+  </tbody></table></div>`;
+}
+
+function vAnalysis(){ const y=new Date().getFullYear(); const tr=tradeAnalysis(),vn=vendorAnalysis(),cf=cashflow(y),bd=budgetVsActual();
+  const tmax=tr.length?tr[0].total:1, vmax=vn.length?vn[0].paid:1, cmax=Math.max(1,...cf.map(m=>Math.max(m.inc_actual,m.exp_actual)));
+  return `<div class="head"><div><div class="h1">分析中心</div><div class="sub">工種 · 廠商 · 現金流 · 預算 vs 實際</div></div></div>
+  <div class="grid2">
+    <div class="card"><h3>工種成本分析</h3>${tr.map(t=>`<div class="bar-row"><span>${esc(t.name)}</span><div class="bar-track"><div class="bar-fill" style="width:${(t.total/tmax*100).toFixed(1)}%"></div></div><span class="r mono">${fmt(t.total)}</span></div>`).join('')||'<div class="empty">尚無資料</div>'}</div>
+    <div class="card"><h3>廠商合作金額 Top 10</h3>${vn.slice(0,10).map(v=>`<div class="bar-row"><span>${esc(v.name)}</span><div class="bar-track"><div class="bar-fill bl" style="width:${(v.paid/vmax*100).toFixed(1)}%"></div></div><span class="r mono">${fmt(v.paid)}</span></div>`).join('')||'<div class="empty">尚無資料</div>'}</div>
+  </div>
+  <div class="card"><h3>現金流（${y}）— 實際收入 vs 實際支出</h3><div class="cols" style="height:170px">${cf.map(m=>`<div class="col" title="${m.m}月"><div style="display:flex;gap:2px;align-items:flex-end;height:100%;width:82%"><div style="flex:1;background:var(--green);border-radius:3px 3px 0 0;height:${(m.inc_actual/cmax*100).toFixed(1)}%"></div><div style="flex:1;background:var(--red);border-radius:3px 3px 0 0;height:${(m.exp_actual/cmax*100).toFixed(1)}%"></div></div><small>${m.m}</small></div>`).join('')}</div><div class="legend"><span><i style="background:var(--green)"></i>實際收入</span><span><i style="background:var(--red)"></i>實際支出</span></div></div>
+  <div class="card"><h3>預算 vs 實際（依工種）</h3><table><thead><tr><th>工種</th><th class="r">預算（合約）</th><th class="r">實際（已付）</th><th class="r">差額</th><th style="width:180px">達成率</th></tr></thead><tbody>
+  ${bd.map(b=>{const pct=b.budget?b.actual/b.budget*100:0;return `<tr><td>${esc(b.name)}</td><td class="r mono">${fmt(b.budget)}</td><td class="r mono">${fmt(b.actual)}</td><td class="r mono ${b.diff<0?'r':'g'}">${fmt(b.diff)}</td><td><div class="bar-track" style="height:16px"><div class="bar-fill ${pct>100?'rd':pct>85?'am':'gr'}" style="width:${Math.min(pct,100).toFixed(1)}%"></div></div></td></tr>`;}).join('')||'<tr><td colspan="5" class="empty">尚無合約</td></tr>'}
+  </tbody></table></div>`;
+}
+
+function vSettings(){ const c={projects:DB.projects.length,income:DB.income.length,expenses:DB.expenses.length,vendors:DB.vendors.length,contracts:DB.contracts.length};
+  const catCard=(kind,label)=>`<div class="card" style="padding:0;overflow:hidden"><div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px 8px"><h3 style="margin:0">${label}（${cats(kind).length}）</h3><button class="btn" onclick="addCat('${kind}')">＋ 新增</button></div><table><tbody>${cats(kind).map(c=>`<tr><td>${esc(c.name)}</td><td class="r" style="width:90px"><span class="iconbtn" onclick="renameCat(${c.id},'${esc(c.name)}')">改名</span><span class="iconbtn" style="color:var(--red)" onclick="delCat(${c.id})">刪</span></td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="head"><div><div class="h1">設定</div><div class="sub">匯入舊資料 · 匯出備份 · 工種與類型字典管理</div></div></div>
+  <div class="kpis" style="grid-template-columns:repeat(5,1fr)">${kpi('專案',c.projects)}${kpi('收入',c.income)}${kpi('支出',c.expenses)}${kpi('廠商',c.vendors)}${kpi('發包合約',c.contracts)}</div>
+  <div class="card"><h3>匯入舊資料（JSON 備份）</h3><p style="color:var(--mid);font-size:13px;margin-bottom:14px">選擇舊系統匯出的 <b>.json</b>。支援 localStorage 版與 Flask v2.0 版，<b>可重複匯入不會重複</b>。匯入後顯示新舊總額對帳。</p>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><input type="file" id="imp2" accept=".json" onchange="onImport(event)"><span style="font-size:12px;color:var(--mid)">或用左下角「匯入資料」也可以</span></div>
+  <div id="recbox"></div></div>
+  <div class="card" style="background:var(--amber-bg);border-color:#e8d9a8"><b>⚠️ 資料存在這台電腦的瀏覽器裡</b><div style="font-size:13px;color:var(--mid);margin-top:6px">建議定期按左下角「📤 匯出備份」存一份 .json 到 Dropbox，換電腦或清瀏覽器才不會不見。</div></div>
+  <div class="grid2" style="grid-template-columns:1fr 1fr 1fr">${catCard('trade','工種')}${catCard('income_type','收入類型')}${catCard('company_expense','公司費用類別')}</div>`;
+}
+
+/* ============ Modal ============ */
+function modal(title,fields,onsave){
+  const host=document.getElementById('modalhost');
+  host.innerHTML=`<div class="ov open" id="mov"><div class="modal"><h3>${title}</h3><div class="fg">${fields}</div><div class="macts"><button class="btn" onclick="closeMod()">取消</button><button class="btn p" id="msave">儲存</button></div></div></div>`;
+  document.getElementById('msave').onclick=onsave;
+  document.getElementById('mov').addEventListener('click',e=>{if(e.target.id==='mov')closeMod();});
+}
+function closeMod(){document.getElementById('modalhost').innerHTML='';}
+const F={
+  txt:(id,l,v)=>`<div class="fld"><label>${l}</label><input id="${id}" value="${esc(v==null?'':v)}"></div>`,
+  num:(id,l,v)=>`<div class="fld"><label>${l}</label><input id="${id}" type="number" value="${v==null?'':v}"></div>`,
+  date:(id,l,v)=>`<div class="fld"><label>${l}</label><input id="${id}" type="date" value="${v||''}"></div>`,
+  area:(id,l,v)=>`<div class="fld full"><label>${l}</label><textarea id="${id}">${esc(v||'')}</textarea></div>`,
+  sel:(id,l,arr,v,extra)=>`<div class="fld"><label>${l}</label><select id="${id}">${extra||''}${arr.map(o=>`<option value="${o.v}" ${String(v)===String(o.v)?'selected':''}>${esc(o.t)}</option>`).join('')}</select></div>`
+};
+const gv=id=>{const e=document.getElementById(id);return e?e.value:'';};
+const catOpts=kind=>cats(kind).map(c=>({v:c.id,t:c.name}));
+const projOpts=()=>DB.projects.map(p=>({v:p.id,t:p.name}));
+const venOpts=()=>DB.vendors.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(v=>({v:v.id,t:v.name}));
+
+/* 支出 */
+function expForm(r){r=r||{};return F.sel('e-proj','專案',projOpts(),r.project_id,'<option value="">公司支出（不分案）</option>')+F.sel('e-trade','工種',catOpts('trade'),r.category_id,'<option value="">—</option>')+F.sel('e-ven','廠商',venOpts(),r.vendor_id,'<option value="">—</option>')+F.txt('e-item','品項/說明',r.item)+F.num('e-amt','本次付款金額',r.amount)+F.date('e-date','付款日期',r.date||today())+F.sel('e-pay','付款方式',[{v:'transfer',t:'轉帳'},{v:'cash',t:'現金'},{v:'check',t:'開票'}],r.payment_method,'<option value="">—</option>')+F.sel('e-tax','稅別',[{v:'未稅',t:'未稅'},{v:'含稅',t:'含稅'},{v:'免稅',t:'免稅'}],r.tax_setting||'未稅','<option value="">—</option>')+F.txt('e-inv','發票號碼',r.invoice_no)+F.sel('e-st','狀態',[{v:'paid',t:'已付'},{v:'pending',t:'未付'}],r.status||'paid')+F.date('e-due','應付日（未付時）',r.due_date)+F.area('e-note','備註',r.note);}
+function newExp(){modal('新增支出',expForm({}),()=>saveExp(null));}
+function editExp(id){modal('編輯支出',expForm(byId('expenses',id)),()=>saveExp(id));}
+function saveExp(id){const o={project_id:gv('e-proj')||null,category_id:gv('e-trade')||null,vendor_id:gv('e-ven')||null,item:gv('e-item'),amount:parseFloat(gv('e-amt'))||0,date:gv('e-date'),payment_method:gv('e-pay'),tax_setting:gv('e-tax'),invoice_no:gv('e-inv'),status:gv('e-st'),due_date:gv('e-due'),note:gv('e-note')};
+  if(id){Object.assign(byId('expenses',id),o);}else{o.id=nextId('expenses');DB.expenses.push(o);} save();closeMod();render();}
+/* 收入 */
+function incForm(r){r=r||{};return F.sel('i-proj','專案',projOpts(),r.project_id,'<option value="">—</option>')+F.sel('i-type','收入類型',catOpts('income_type'),r.type_id,'<option value="">—</option>')+F.num('i-per','請款期數',r.period_no||1)+F.num('i-amt','金額',r.amount)+F.date('i-due','應收日期',r.due_date||today())+F.sel('i-tax','稅別',[{v:'未稅',t:'未稅'},{v:'含稅',t:'含稅'},{v:'免稅',t:'免稅'}],r.tax_setting||'未稅')+F.txt('i-bank','收款銀行',r.bank_account)+F.txt('i-inv','發票號碼',r.invoice_no)+F.sel('i-st','狀態',[{v:'pending',t:'未收'},{v:'received',t:'已收'}],r.status||'pending')+F.date('i-rd','收款日期',r.received_date)+F.area('i-note','備註',r.note);}
+function newInc(){modal('新增收入',incForm({}),()=>saveInc(null));}
+function editInc(id){modal('編輯收入',incForm(byId('income',id)),()=>saveInc(id));}
+function saveInc(id){const o={project_id:gv('i-proj')||null,type_id:gv('i-type')||null,period_no:parseInt(gv('i-per'))||1,amount:parseFloat(gv('i-amt'))||0,due_date:gv('i-due'),tax_setting:gv('i-tax'),bank_account:gv('i-bank'),invoice_no:gv('i-inv'),status:gv('i-st'),received_date:gv('i-rd'),note:gv('i-note')};
+  if(id){Object.assign(byId('income',id),o);}else{o.id=nextId('income');o.date=o.due_date;DB.income.push(o);} save();closeMod();render();}
+function toggleRecv(id,recv){const r=byId('income',id);r.status=recv?'received':'pending';r.received_date=recv?(r.received_date||today()):'';save();render();}
+/* 廠商 */
+function venForm(r){r=r||{};return F.txt('v-name','廠商名稱',r.name)+F.sel('v-trade','工種',catOpts('trade'),r.category_id,'<option value="">—</option>')+F.txt('v-contact','聯絡人',r.contact)+F.txt('v-tel','電話',r.tel)+F.txt('v-taxid','統編',r.tax_id)+F.txt('v-bank','銀行',r.bank_name)+F.txt('v-holder','戶名',r.bank_holder)+F.txt('v-acc','帳號',r.bank_account)+F.area('v-note','備註',r.note);}
+function newVen(){modal('新增廠商',venForm({}),()=>saveVen(null));}
+function editVen(id){modal('編輯廠商',venForm(byId('vendors',id)),()=>saveVen(id));}
+function saveVen(id){const name=gv('v-name').trim();if(!name){alert('請填廠商名稱');return;}const o={name,category_id:gv('v-trade')||null,contact:gv('v-contact'),tel:gv('v-tel'),tax_id:gv('v-taxid'),bank_name:gv('v-bank'),bank_holder:gv('v-holder'),bank_account:gv('v-acc'),note:gv('v-note')};
+  if(id){Object.assign(byId('vendors',id),o);}else{o.id=nextId('vendors');DB.vendors.push(o);} save();closeMod();render();}
+/* 專案 */
+function projForm(r){r=r||{};return F.txt('p-name','專案名稱',r.name)+F.txt('p-client','業主',r.client_name)+F.sel('p-st','狀態',[{v:'lead',t:'設計中'},{v:'active',t:'施工中'},{v:'completed',t:'完工'},{v:'paused',t:'暫停'},{v:'archived',t:'封存'}],r.status||'active')+F.txt('p-tel','電話',r.client_tel)+F.txt('p-addr','地址',r.address)+F.date('p-start','開工日',r.start_date)+F.date('p-end','完工日',r.end_date)+F.num('p-design','設計費',r.design_fee)+F.num('p-eng','工程合約',r.construction_contract)+F.area('p-note','備註',r.note);}
+function newProj(){modal('新增專案',projForm({}),()=>saveProj(null));}
+function editProj(id){modal('編輯專案',projForm(byId('projects',id)),()=>saveProj(id));}
+function saveProj(id){const name=gv('p-name').trim();if(!name){alert('請填專案名稱');return;}const o={name,client_name:gv('p-client'),status:gv('p-st'),client_tel:gv('p-tel'),address:gv('p-addr'),start_date:gv('p-start'),end_date:gv('p-end'),design_fee:parseFloat(gv('p-design'))||0,construction_contract:parseFloat(gv('p-eng'))||0,note:gv('p-note')};
+  if(id){Object.assign(byId('projects',id),o);}else{o.id=nextId('projects');o.code='';DB.projects.push(o);} save();closeMod();render();}
+/* 合併廠商 */
+function openMerge(){const vs=DB.vendors.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  modal('合併重複廠商',`<div class="fld full"><label>合併後保留為</label><select id="mg-to"><option value="">—</option>${vs.map(v=>`<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></div><div class="fld full"><label>勾選要併入的廠商</label><div style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px 12px">${vs.map(v=>`<label style="display:block;padding:3px 0;font-size:13px"><input type="checkbox" class="mgcb" value="${v.id}"> ${esc(v.name)}</label>`).join('')}</div></div>`,doMerge);
+}
+function doMerge(){const to=gv('mg-to');if(!to){alert('請選保留的廠商');return;}const from=[...document.querySelectorAll('.mgcb:checked')].map(c=>c.value).filter(v=>v!==to);
+  if(!from.length){alert('請勾選要合併的廠商');return;} if(!confirm('確定合併 '+from.length+' 家？'))return;
+  from.forEach(fid=>{DB.expenses.forEach(e=>{if(String(e.vendor_id)===fid)e.vendor_id=+to;});DB.contracts.forEach(c=>{if(String(c.vendor_id)===fid)c.vendor_id=+to;});DB.vendors=DB.vendors.filter(v=>String(v.id)!==fid);});
+  save();closeMod();render();}
+/* 字典 */
+function addCat(kind){const n=prompt('新增名稱：');if(!n)return;if(!DB.categories.some(c=>c.kind===kind&&c.name===n.trim())){DB.categories.push({id:nextId('categories'),kind,name:n.trim(),sort_order:500});save();render();}}
+function renameCat(id,cur){const n=prompt('改名為：',cur);if(!n||n===cur)return;byId('categories',id).name=n.trim();save();render();}
+function delCat(id){if(!confirm('確定刪除？已使用此分類的資料會變未分類。'))return;DB.categories=DB.categories.filter(c=>c.id!==id);save();render();}
+function delRow(t,id){if(!confirm('確定刪除這筆？'))return;DB[t]=DB[t].filter(x=>x.id!==id);save();render();}
+
+/* ============ 匯入 / 匯出 ============ */
+function onImport(ev){const f=ev.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=e=>{let data;try{data=JSON.parse(e.target.result);}catch(err){alert('檔案不是有效的 JSON');return;}
+    if(data._v3&&Array.isArray(data.expenses)&&Array.isArray(data.income)){ if(confirm('這是 v3 原生備份，將「取代」目前全部資料，確定？')){DB=seed(data);save();nav('dashboard');alert('已載入備份');} ev.target.value='';return; }
+    const res=migrateLegacy(data); const im=Object.entries(res.imported).map(([k,v])=>k+' '+v).join('、')||'無新資料';
+    const rec=res.reconcile; const cls=d=>d===0?'':'style="color:var(--red)"';
+    const box=`<div style="margin-top:16px;background:var(--cream);border-radius:8px;padding:14px 16px"><div style="font-size:12px;color:var(--mid);margin-bottom:8px">匯入：${im}</div><table style="background:transparent"><thead><tr><th>項目</th><th class="r">舊系統</th><th class="r">新資料</th><th class="r">差異</th></tr></thead><tbody><tr><td>收入（已收）</td><td class="r mono">${money(rec.income.old)}</td><td class="r mono">${money(rec.income.new)}</td><td class="r mono" ${cls(rec.income.diff)}>${money(rec.income.diff)}</td></tr><tr><td>已付出</td><td class="r mono">${money(rec.expense.old)}</td><td class="r mono">${money(rec.expense.new)}</td><td class="r mono" ${cls(rec.expense.diff)}>${money(rec.expense.diff)}</td></tr></tbody></table></div>`;
+    nav('settings'); const rb=document.getElementById('recbox'); if(rb)rb.innerHTML=box; ev.target.value='';
+  };
+  rd.readAsText(f);
+}
+function exportBackup(){const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='laduree-財務v3-'+today()+'.json';a.click();}
+
+/* ============ 啟動 ============ */
+DB = loadDB();
+updateStoreSize(); nav('dashboard');
+</script>
+</body>
+</html>
