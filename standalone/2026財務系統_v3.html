@@ -83,6 +83,8 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
 .fld textarea{min-height:56px;resize:vertical}
 .macts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 .linkc{border-bottom:1px solid var(--line)}
+.paybadge{display:none;background:var(--red);color:#fff;font-size:10px;font-weight:600;padding:1px 6px;border-radius:9px;margin-left:2px}
+.paybadge.show{display:inline-block}
 @media(max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}.grid2{grid-template-columns:1fr}.side{display:none}}
 </style>
 </head>
@@ -95,6 +97,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
       <a data-p="projects">專案</a>
       <a data-p="income">收入</a>
       <a data-p="expenses">支出</a>
+      <a data-p="payables">待付款 <span id="paybadge" class="paybadge"></span></a>
       <a data-p="vendors">廠商</a>
       <a data-p="analysis">分析</a>
       <a data-p="settings">設定</a>
@@ -293,8 +296,10 @@ let IFLT={project:'',type:'',status:''}; // 收入篩選
 function nav(page,pid){ VIEW={page,pid:pid||null}; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.p===page)); render(); window.scrollTo(0,0); }
 document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a'); if(a)nav(a.dataset.p);});
 function render(){ const el=document.getElementById('app'); const P=VIEW.page;
-  el.innerHTML = P==='dashboard'?vDash(): P==='projects'?vProjects(): P==='project'?vProjectDetail(VIEW.pid): P==='income'?vIncome(): P==='expenses'?vExpenses(): P==='vendors'?vVendors(): P==='analysis'?vAnalysis(): P==='settings'?vSettings(): vDash();
+  el.innerHTML = P==='dashboard'?vDash(): P==='projects'?vProjects(): P==='project'?vProjectDetail(VIEW.pid): P==='income'?vIncome(): P==='expenses'?vExpenses(): P==='payables'?vPayables(): P==='vendors'?vVendors(): P==='analysis'?vAnalysis(): P==='settings'?vSettings(): vDash();
+  updatePayBadge();
 }
+function updatePayBadge(){ const n=DB.expenses.filter(e=>e.status==='pending').length; const b=document.getElementById('paybadge'); if(b){ b.textContent=n; b.classList.toggle('show',n>0); } }
 
 /* ============ 頁面 ============ */
 function kpi(l,v,cls,s){return `<div class="kpi"><div class="l">${l}</div><div class="v mono ${cls||''}">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`;}
@@ -414,6 +419,29 @@ function vExpenses(){
   <tfoot><tr><td colspan="6">合計 ${rows.length} 筆</td><td class="r mono">${money(total)}</td><td colspan="5"></td></tr></tfoot></table></div>`;
 }
 
+function vPayables(){
+  const td=today();
+  const rows=DB.expenses.filter(e=>e.status==='pending').sort((a,b)=>(a.due_date||'9999-99').localeCompare(b.due_date||'9999-99'));
+  const total=sum(rows,r=>r.amount);
+  const overdue=rows.filter(r=>r.due_date&&r.due_date<td);
+  const week=new Date(Date.now()+7*864e5).toISOString().slice(0,10);
+  const soon=rows.filter(r=>r.due_date&&r.due_date>=td&&r.due_date<=week);
+  const dcls=due=>{ if(!due)return ''; if(due<td)return 'r'; if(due<=week)return 'a'; return ''; };
+  const dtag=due=>{ if(!due)return '<span style="color:var(--muted)">未設定</span>'; if(due<td)return `<span class="a" style="color:var(--red);font-weight:600">${due} ⚠</span>`; if(due<=week)return `<span style="color:var(--amber);font-weight:600">${due}</span>`; return `<span style="color:var(--mid)">${due}</span>`; };
+  return `<div class="head"><div><div class="h1">待付款</div><div class="sub">尚未付款的帳目 · 依應付日排序，逾期紅字、7 天內橘字</div></div>
+  <div style="text-align:right"><div class="mono r" style="font-size:20px;font-weight:700">${money(total)}</div><div class="sub" style="margin:0 0 6px">共 ${rows.length} 筆待付</div><button class="btn p" onclick="newPayable()">＋ 新增待付款</button></div></div>
+  <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+    ${kpi('逾期未付',fmt(sum(overdue,r=>r.amount)),'r',overdue.length+' 筆')}
+    ${kpi('7 天內到期',fmt(sum(soon,r=>r.amount)),'a',soon.length+' 筆')}
+    ${kpi('全部待付',fmt(total),'',rows.length+' 筆')}
+  </div>
+  <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>應付日</th><th>廠商</th><th>專案</th><th>工種</th><th>品項</th><th class="r">金額</th><th>匯款帳號</th><th>備註</th><th></th></tr></thead><tbody>
+  ${rows.map(r=>{const v=byId('vendors',r.vendor_id);const bank=v?v.bank_account:'';const holder=v?v.bank_holder:'';return `<tr><td class="mono">${dtag(r.due_date)}</td><td style="font-weight:600">${esc(venName(r.vendor_id))||'—'}</td><td style="color:var(--mid)">${esc(projName(r.project_id))||'—'}</td><td><span class="tag">${esc(catName(r.category_id))||'—'}</span></td><td style="color:var(--mid)">${esc(r.item)}</td><td class="r mono" style="font-weight:600">${fmt(r.amount)}</td><td class="mono" style="font-size:12px;color:var(--mid)">${esc(bank)||'—'}${holder?`<div style="font-size:11px;color:var(--muted)">${esc(holder)}</div>`:''}</td><td style="font-size:12px;color:var(--mid)">${esc(String(r.note||'').split('TG-photo')[0].split('| TG')[0].trim())}</td><td style="white-space:nowrap"><span class="iconbtn" style="color:var(--green)" onclick="markPaid(${r.id})">標記已付</span><span class="iconbtn" onclick="editExp(${r.id})">編輯</span><span class="iconbtn" style="color:var(--red)" onclick="delRow('expenses',${r.id})">刪</span></td></tr>`;}).join('')||'<tr><td colspan="9" class="empty">目前沒有待付款 🎉</td></tr>'}
+  </tbody><tfoot><tr><td colspan="5">合計待付</td><td class="r mono r">${money(total)}</td><td colspan="3"></td></tr></tfoot></table></div>`;
+}
+function markPaid(id){ const r=byId('expenses',id); if(!confirm('標記「'+(venName(r.vendor_id)||'這筆')+' '+money(r.amount)+'」為已付？'))return; r.status='paid'; if(!r.date)r.date=today(); save(); render(); }
+function newPayable(){ modal('新增待付款',expForm({status:'pending',date:''}),()=>saveExp(null)); }
+
 function vVendors(){ const rows=vendorAnalysis();
   return `<div class="head"><div><div class="h1">廠商</div><div class="sub">合作案件數、合作總金額、未付款</div></div></div>
   <div class="addbar"><button class="btn" onclick="openMerge()">合併重複廠商</button><button class="btn p" onclick="newVen()">＋ 新增廠商</button></div>
@@ -466,8 +494,16 @@ const catOpts=kind=>cats(kind).map(c=>({v:c.id,t:c.name}));
 const projOpts=()=>DB.projects.map(p=>({v:p.id,t:p.name}));
 const venOpts=()=>DB.vendors.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(v=>({v:v.id,t:v.name}));
 
+/* 廠商下拉（含「＋新增廠商」與選取後自動帶工種）*/
+function venSelectHtml(id,sel){return `<div class="fld"><label>廠商</label><select id="${id}" onchange="onVenPick('${id}')"><option value="">—</option>${venOpts().map(o=>`<option value="${o.v}" ${String(sel)===String(o.v)?'selected':''}>${esc(o.t)}</option>`).join('')}<option value="__new__">＋ 新增廠商…</option></select></div>`;}
+function onVenPick(id){ const sel=document.getElementById(id);
+  if(sel.value==='__new__'){ const name=prompt('新廠商名稱：'); if(name&&name.trim()){ const vid=nextId('vendors'); DB.vendors.push({id:vid,name:name.trim(),category_id:null,contact:'',tel:'',bank_name:'',bank_account:'',bank_holder:'',tax_id:'',note:''}); save();
+      sel.innerHTML='<option value="">—</option>'+venOpts().map(o=>`<option value="${o.v}">${esc(o.t)}</option>`).join('')+'<option value="__new__">＋ 新增廠商…</option>'; sel.value=vid; } else { sel.value=''; } return; }
+  const v=byId('vendors',sel.value); const t=document.getElementById('e-trade');
+  if(v&&v.category_id&&t&&!t.value) t.value=v.category_id;
+}
 /* 支出 */
-function expForm(r){r=r||{};return F.sel('e-proj','專案',projOpts(),r.project_id,'<option value="">公司支出（不分案）</option>')+F.sel('e-trade','工種',catOpts('trade'),r.category_id,'<option value="">—</option>')+F.sel('e-ven','廠商',venOpts(),r.vendor_id,'<option value="">—</option>')+F.txt('e-item','品項/說明',r.item)+F.num('e-amt','本次付款金額',r.amount)+F.date('e-date','付款日期',r.date||today())+F.sel('e-pay','付款方式',[{v:'transfer',t:'轉帳'},{v:'cash',t:'現金'},{v:'check',t:'開票'}],r.payment_method,'<option value="">—</option>')+F.sel('e-tax','稅別',[{v:'未稅',t:'未稅'},{v:'含稅',t:'含稅'},{v:'免稅',t:'免稅'}],r.tax_setting||'未稅','<option value="">—</option>')+F.txt('e-inv','發票號碼',r.invoice_no)+F.sel('e-st','狀態',[{v:'paid',t:'已付'},{v:'pending',t:'未付'}],r.status||'paid')+F.date('e-due','應付日（未付時）',r.due_date)+F.area('e-note','備註',r.note);}
+function expForm(r){r=r||{};return F.sel('e-proj','專案',projOpts(),r.project_id,'<option value="">公司支出（不分案）</option>')+F.sel('e-trade','工種',catOpts('trade'),r.category_id,'<option value="">—</option>')+venSelectHtml('e-ven',r.vendor_id)+F.txt('e-item','品項/說明',r.item)+F.num('e-amt','本次付款金額',r.amount)+F.date('e-date','付款日期',r.date||today())+F.sel('e-pay','付款方式',[{v:'transfer',t:'轉帳'},{v:'cash',t:'現金'},{v:'check',t:'開票'}],r.payment_method,'<option value="">—</option>')+F.sel('e-tax','稅別',[{v:'未稅',t:'未稅'},{v:'含稅',t:'含稅'},{v:'免稅',t:'免稅'}],r.tax_setting||'未稅','<option value="">—</option>')+F.txt('e-inv','發票號碼',r.invoice_no)+F.sel('e-st','狀態',[{v:'paid',t:'已付'},{v:'pending',t:'未付'}],r.status||'paid')+F.date('e-due','應付日（未付時）',r.due_date)+F.area('e-note','備註',r.note);}
 function newExp(){modal('新增支出',expForm({}),()=>saveExp(null));}
 function editExp(id){modal('編輯支出',expForm(byId('expenses',id)),()=>saveExp(id));}
 function saveExp(id){const o={project_id:gv('e-proj')||null,category_id:gv('e-trade')||null,vendor_id:gv('e-ven')||null,item:gv('e-item'),amount:parseFloat(gv('e-amt'))||0,date:gv('e-date'),payment_method:gv('e-pay'),tax_setting:gv('e-tax'),invoice_no:gv('e-inv'),status:gv('e-st'),due_date:gv('e-due'),note:gv('e-note')};
