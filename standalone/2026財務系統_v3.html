@@ -100,6 +100,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
       <a data-p="payables">待付款 <span id="paybadge" class="paybadge"></span></a>
       <a data-p="vendors">廠商</a>
       <a data-p="analysis">分析</a>
+      <a data-p="feedback">意見記錄</a>
       <a data-p="settings">設定</a>
     </nav>
     <div class="foot">
@@ -118,7 +119,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
 const KEY='laduree_finance_v3';
 const TABLES=['categories','vendors','projects','contracts','income','expenses'];
 let DB;  // 於檔案最底部（所有預設值/函式定義後）才 loadDB()，避免 TDZ
-function emptyDB(){ const d={_v3:true,_seq:{}}; TABLES.forEach(t=>d[t]=[]); return d; }
+function emptyDB(){ const d={_v3:true,_seq:{}}; TABLES.forEach(t=>d[t]=[]); d.feedback=[]; return d; }
 function loadDB(){ try{ const d=JSON.parse(localStorage.getItem(KEY)); return d&&d._v3?d:seed(emptyDB()); }catch(e){ return seed(emptyDB()); } }
 function save(){ DB._savedAt=new Date().toISOString(); localStorage.setItem(KEY, JSON.stringify(DB)); updateStoreSize(); }
 function nextId(t){ DB._seq[t]=(DB._seq[t]||0)+1; return DB._seq[t]; }
@@ -296,7 +297,7 @@ let IFLT={project:'',type:'',status:''}; // 收入篩選
 function nav(page,pid){ VIEW={page,pid:pid||null}; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.p===page)); render(); window.scrollTo(0,0); }
 document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a'); if(a)nav(a.dataset.p);});
 function render(){ const el=document.getElementById('app'); const P=VIEW.page;
-  el.innerHTML = P==='dashboard'?vDash(): P==='projects'?vProjects(): P==='project'?vProjectDetail(VIEW.pid): P==='income'?vIncome(): P==='expenses'?vExpenses(): P==='payables'?vPayables(): P==='vendors'?vVendors(): P==='analysis'?vAnalysis(): P==='settings'?vSettings(): vDash();
+  el.innerHTML = P==='dashboard'?vDash(): P==='projects'?vProjects(): P==='project'?vProjectDetail(VIEW.pid): P==='income'?vIncome(): P==='expenses'?vExpenses(): P==='payables'?vPayables(): P==='vendors'?vVendors(): P==='analysis'?vAnalysis(): P==='feedback'?vFeedback(): P==='settings'?vSettings(): vDash();
   updatePayBadge();
 }
 function updatePayBadge(){ const n=DB.expenses.filter(e=>e.status==='pending').length; const b=document.getElementById('paybadge'); if(b){ b.textContent=n; b.classList.toggle('show',n>0); } }
@@ -463,6 +464,33 @@ function vAnalysis(){ const y=new Date().getFullYear(); const tr=tradeAnalysis()
   </tbody></table></div>`;
 }
 
+/* ============ 意見記錄 / 待修改 ============ */
+const FB_PAGES=['總覽','專案','收入','支出','待付款','廠商','分析','設定','整體','其他'];
+function vFeedback(){
+  const rows=(DB.feedback||[]).slice().sort((a,b)=>(a.status==='done')-(b.status==='done')||(b.date||'').localeCompare(a.date||'')||b.id-a.id);
+  const open=rows.filter(r=>r.status!=='done').length;
+  return `<div class="head"><div><div class="h1">意見記錄 / 待修改</div><div class="sub">用起來覺得不順、想改的地方隨手記一筆，之後按「匯出清單」整包貼給 Claude</div></div>
+  <div style="display:flex;gap:8px"><button class="btn" onclick="copyFeedback()">📋 匯出清單</button><button class="btn p" onclick="newFb()">＋ 新增意見</button></div></div>
+  <div class="kpis" style="grid-template-columns:repeat(2,1fr)">${kpi('待處理',open,'a','項')}${kpi('已完成',rows.length-open,'g','項')}</div>
+  <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>日期</th><th>頁面</th><th>優先</th><th>想改的地方 / 問題</th><th>狀態</th><th></th></tr></thead><tbody>
+  ${rows.map(r=>`<tr style="${r.status==='done'?'opacity:.55':''}"><td class="mono" style="color:var(--mid)">${r.date||''}</td><td><span class="tag">${esc(r.page)||'—'}</span></td><td>${r.priority==='高'?'<span class="tag rd">高</span>':r.priority==='低'?'<span class="tag">低</span>':'<span class="tag am">中</span>'}</td><td style="white-space:normal;max-width:560px">${esc(r.text)}</td><td><span class="tag ${r.status==='done'?'gr':'am'}" style="cursor:pointer" onclick="toggleFb(${r.id})">${r.status==='done'?'已完成 ▸':'待處理'}</span></td><td style="white-space:nowrap"><span class="iconbtn" onclick="editFb(${r.id})">編輯</span><span class="iconbtn" style="color:var(--red)" onclick="delFb(${r.id})">刪</span></td></tr>`).join('')||'<tr><td colspan="6" class="empty">還沒有記錄。用系統時遇到不順手的地方，就按右上「＋ 新增意見」記下來 ✍️</td></tr>'}
+  </tbody></table></div>`;
+}
+function fbForm(r){r=r||{};return F.sel('fb-page','頁面 / 位置',FB_PAGES.map(p=>({v:p,t:p})),r.page||'支出')+F.sel('fb-pri','優先度',[{v:'高',t:'高（很困擾）'},{v:'中',t:'中'},{v:'低',t:'低（有空再改）'}],r.priority||'中')+F.area('fb-text','想改的地方 / 問題描述',r.text)+F.sel('fb-st','狀態',[{v:'open',t:'待處理'},{v:'done',t:'已完成'}],r.status||'open');}
+function newFb(){modal('新增意見',fbForm({}),()=>saveFb(null));}
+function editFb(id){modal('編輯意見',fbForm((DB.feedback||[]).find(x=>x.id===id)),()=>saveFb(id));}
+function saveFb(id){const text=gv('fb-text').trim();if(!text){alert('請描述想改的地方');return;}const o={page:gv('fb-page'),priority:gv('fb-pri'),text,status:gv('fb-st')};
+  if(!DB.feedback)DB.feedback=[]; if(id){Object.assign(DB.feedback.find(x=>x.id===id),o);}else{o.id=nextId('feedback');o.date=today();DB.feedback.push(o);} save();closeMod();render();}
+function toggleFb(id){const r=DB.feedback.find(x=>x.id===id);r.status=r.status==='done'?'open':'done';save();render();}
+function delFb(id){if(!confirm('刪除這筆意見？'))return;DB.feedback=DB.feedback.filter(x=>x.id!==id);save();render();}
+function fbText(){const rows=(DB.feedback||[]).slice().sort((a,b)=>(a.status==='done')-(b.status==='done')||(b.priority==='高')-(a.priority==='高'));
+  return '漣一財務系統 · 待修改清單（'+today()+'）\n共 '+rows.length+' 項\n\n'+rows.map((r,i)=>`${i+1}. [${r.priority||'中'}][${r.page||''}] ${r.text}${r.status==='done'?'（已完成）':''}`).join('\n');}
+function copyFeedback(){const rows=DB.feedback||[];if(!rows.length){alert('目前沒有任何記錄');return;}const txt=fbText();window._fbtxt=txt;try{navigator.clipboard&&navigator.clipboard.writeText(txt);}catch(e){}
+  document.getElementById('modalhost').innerHTML=`<div class="ov open" id="mov"><div class="modal"><h3>待修改清單</h3><p style="font-size:13px;color:var(--mid);margin-bottom:10px">已嘗試複製到剪貼簿。若沒成功，請在下框全選（Ctrl+A / Cmd+A）複製，直接貼給 Claude；或按「下載 .txt」存檔傳給我。</p><textarea readonly style="width:100%;min-height:240px;font-family:inherit;font-size:13px;padding:10px;border:1px solid var(--line);border-radius:6px">${esc(txt)}</textarea><div class="macts"><button class="btn" onclick="closeMod()">關閉</button><button class="btn p" onclick="dlFeedback()">下載 .txt</button></div></div></div>`;
+  const ta=document.querySelector('#mov textarea'); if(ta){ta.focus();ta.select();}
+  document.getElementById('mov').addEventListener('click',e=>{if(e.target.id==='mov')closeMod();});}
+function dlFeedback(){const blob=new Blob([window._fbtxt||fbText()],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='待修改清單-'+today()+'.txt';a.click();}
+
 function vSettings(){ const c={projects:DB.projects.length,income:DB.income.length,expenses:DB.expenses.length,vendors:DB.vendors.length,contracts:DB.contracts.length};
   const catCard=(kind,label)=>`<div class="card" style="padding:0;overflow:hidden"><div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px 8px"><h3 style="margin:0">${label}（${cats(kind).length}）</h3><button class="btn" onclick="addCat('${kind}')">＋ 新增</button></div><table><tbody>${cats(kind).map(c=>`<tr><td>${esc(c.name)}</td><td class="r" style="width:90px"><span class="iconbtn" onclick="renameCat(${c.id},'${esc(c.name)}')">改名</span><span class="iconbtn" style="color:var(--red)" onclick="delCat(${c.id})">刪</span></td></tr>`).join('')}</tbody></table></div>`;
   return `<div class="head"><div><div class="h1">設定</div><div class="sub">匯入舊資料 · 匯出備份 · 工種與類型字典管理</div></div></div>
@@ -556,6 +584,7 @@ function exportBackup(){const blob=new Blob([JSON.stringify(DB,null,2)],{type:'a
 
 /* ============ 啟動 ============ */
 DB = loadDB();
+if(!DB.feedback) DB.feedback=[];
 updateStoreSize(); nav('dashboard');
 </script>
 </body>
