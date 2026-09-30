@@ -1,0 +1,12 @@
+<nav class="ap-tabs">
+  <a class="ap-tab {% if active=='sites' %}on{% endif %}" href="{{ url_for('app_sites', mode=mode) }}">
+    <span class="ic">🏗️</span><span>案場</span></a>
+  <a class="ap-tab {% if active=='timeline' %}on{% endif %}" href="{{ url_for('app_timeline', mode=mode) }}">
+    <span class="ic">🕐</span><span>時間軸</span></a>
+  <a class="ap-tab add" href="{{ url_for('app_add', mode=mode) }}">
+    <span class="ic">＋</span></a>
+  <a class="ap-tab {% if active=='organize' %}on{% endif %}" href="{{ url_for('app_organize', mode=mode) }}">
+    <span class="ic">🗂️</span><span>整理</span></a>
+  <a class="ap-tab {% if active=='search' %}on{% endif %}" href="{{ url_for('app_search', mode=mode) }}">
+    <span class="ic">🔍</span><span>搜尋</span></a>
+</nav>
