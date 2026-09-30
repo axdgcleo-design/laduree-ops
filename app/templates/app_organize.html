@@ -18,6 +18,9 @@
   <div style="font-size:.76rem;color:var(--muted);margin:-.1rem 0 .6rem">
     點一張照片 → {% if mode=='site' %}指定案場與工種{% else %}選擇分類{% endif %}，即完成歸檔。
   </div>
+  <button class="ap-btn" id="ai-batch" style="background:#5b3fa8;margin:0 0 .8rem" onclick="aiBatch()">
+    ✨ 讓 AI 建議分類（前 20 張）</button>
+  <div id="ai-batch-status" class="ap-hint" style="margin-top:-.5rem"></div>
   <div class="ap-grid">{% for s in photos %}{{ card.cell(s) }}{% endfor %}</div>
 {% else %}
   <div class="ap-empty">
@@ -29,3 +32,32 @@
 
 {% endblock %}
 {% block sheets %}{% include '_app_sheet.html' %}{% endblock %}
+{% block scripts %}
+<script>
+const ORG_MODE = {{ mode|tojson }};
+async function aiBatch(){
+  const btn=document.getElementById('ai-batch');
+  const msg = ORG_MODE==='site'
+    ? 'AI 會建議每張的空間與工種（案場仍需你指定）。要開始嗎？'
+    : 'AI 會自動幫這些照片分類，之後你仍可修改。要開始嗎？';
+  if(!confirm(msg)) return;
+  btn.disabled=true; btn.textContent='AI 分析中…';
+  document.getElementById('ai-batch-status').textContent='處理中，請稍候…';
+  try{
+    const r=await fetch('/api/app/ai-organize',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mode:ORG_MODE, limit:20})});
+    const j=await r.json();
+    if(j.ok){
+      document.getElementById('ai-batch-status').textContent='完成！已處理 '+j.applied+' / '+j.scanned+' 張';
+      setTimeout(()=>location.reload(), 800);
+    }else{
+      document.getElementById('ai-batch-status').textContent = (j.error==='ai_unavailable')?'AI 暫時無法使用（未設定金鑰）':'處理失敗';
+      btn.disabled=false; btn.textContent='✨ 讓 AI 建議分類（前 20 張）';
+    }
+  }catch(e){
+    document.getElementById('ai-batch-status').textContent='處理失敗';
+    btn.disabled=false; btn.textContent='✨ 讓 AI 建議分類（前 20 張）';
+  }
+}
+</script>
+{% endblock %}

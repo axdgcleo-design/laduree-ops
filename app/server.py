@@ -687,6 +687,42 @@ def _make_thumb(b64):
     except Exception:
         return None
 
+# AI 分類（雲端 Claude 視覺）：判斷 工地/個人 + 空間/工種/分類
+AI_MODEL = 'claude-haiku-4-5-20251001'
+
+def _ai_classify(image_b64, known_areas, known_tags, known_cats):
+    if not ANTHROPIC_KEY or not image_b64:
+        return None
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+        areas = '、'.join(known_areas) or '浴室、廚房、臥室、客廳、書房、陽台、大廳'
+        tags  = '、'.join(known_tags)  or '、'.join(DEFAULT_TAGS)
+        cats  = '、'.join(known_cats)  or '、'.join(PERSONAL_CATS)
+        prompt = (
+            "你是室內設計師的照片分類助手。看這張照片判斷分類，只回傳 JSON、不要多餘文字。\n"
+            "先判斷是「工地施工照」還是「個人照片」。\n"
+            f"若工地施工照：mode=\"site\"，room 從（{areas}）挑一個最貼切（可自訂），"
+            f"work 從（{tags}）挑最多兩個工種（逗號分隔，判斷不出留空）。\n"
+            "個人照片指截圖、想買的商品、發票收據、風景、寵物、食物、生活紀錄等；"
+            f"mode=\"personal\"，category 從（{cats}）挑一個或自訂。\n"
+            '格式：{"mode":"site|personal","room":"","work":"","category":"","label":"一句話描述"}'
+        )
+        resp = client.messages.create(model=AI_MODEL, max_tokens=200,
+            messages=[{'role':'user','content':[
+                {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':image_b64}},
+                {'type':'text','text':prompt}]}])
+        txt = (resp.content[0].text or '').strip()
+        i, j = txt.find('{'), txt.rfind('}')
+        if i >= 0 and j > i: txt = txt[i:j+1]
+        d = json.loads(txt)
+        m = d.get('mode','site')
+        if m not in ('site','personal'): m = 'site'
+        return {'mode': m, 'room': (d.get('room') or ''), 'work': (d.get('work') or ''),
+                'category': (d.get('category') or ''), 'label': (d.get('label') or '')}
+    except Exception:
+        return None
+
 def _storage(pid):
     ph = _ph()
     sql = "SELECT COUNT(*) as c, COALESCE(SUM(LENGTH(image_data)),0) as b FROM site_photos WHERE 1=1"
@@ -1162,6 +1198,51 @@ def api_app_upload():
         n += 1
     commit()
     return jsonify({'ok':True,'count':n})
+
+@app.route('/api/site-photo/<int:sid>/ai-suggest', methods=['POST'])
+def api_ai_suggest(sid):
+    """單張 AI 建議分類（不自動儲存，供編輯 sheet 預填後由使用者確認）。"""
+    ph = _ph()
+    row = fetchone(f"SELECT thumb_data,image_data FROM site_photos WHERE id={ph}", (sid,))
+    if not row: return jsonify({'ok':False,'error':'not_found'}), 404
+    img = row.get('thumb_data') or row.get('image_data') or ''   # 用縮圖省流量/加速
+    areas, all_tags, _ = _suggest(None)
+    sug = _ai_classify(img, areas, all_tags, _personal_cats())
+    if not sug: return jsonify({'ok':False,'error':'ai_unavailable'})
+    return jsonify({'ok':True,'suggestion':sug})
+
+@app.route('/api/app/ai-organize', methods=['POST'])
+def api_ai_organize():
+    """批次：對未分類照片跑 AI 建議並直接套用（使用者事後仍可在各分組修改）。"""
+    d = request.json or {}; ph = _ph()
+    mode = _app_mode(d.get('mode','site'))
+    if not ANTHROPIC_KEY:
+        return jsonify({'ok':False,'error':'ai_unavailable'})
+    try:    limit = max(1, min(30, int(d.get('limit', 20))))
+    except: limit = 20
+    if mode == 'site':
+        rows = fetchall("SELECT id,thumb_data,image_data FROM site_photos WHERE mode='site' "
+                        "AND parent_id IS NULL AND project_id IS NULL "
+                        f"ORDER BY created_at DESC LIMIT {limit}")
+    else:
+        rows = fetchall("SELECT id,thumb_data,image_data FROM site_photos WHERE mode='personal' "
+                        "AND parent_id IS NULL AND (category='' OR category IS NULL) "
+                        f"ORDER BY created_at DESC LIMIT {limit}")
+    areas, all_tags, _ = _suggest(None); cats = _personal_cats()
+    applied = 0
+    for r in rows:
+        img = r.get('thumb_data') or r.get('image_data') or ''
+        sug = _ai_classify(img, areas, all_tags, cats)
+        if not sug: continue
+        if mode == 'site':
+            execute(f"UPDATE site_photos SET area={ph}, tag={ph} WHERE id={ph}",
+                    (sug['room'], sug['work'], r['id']))
+        else:
+            execute(f"UPDATE site_photos SET category={ph} WHERE id={ph}",
+                    (sug['category'] or '其他', r['id']))
+        applied += 1
+    commit()
+    return jsonify({'ok':True,'applied':applied,'scanned':len(rows)})
 
 @app.route('/app/manifest.webmanifest')
 def app_manifest():

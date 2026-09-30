@@ -39,7 +39,10 @@
   <datalist id="ap-tag-list">{% for t in sheet_tags %}<option value="{{ t }}">{% endfor %}</datalist>
   <datalist id="ap-cat-list">{% for c in sheet_cats %}<option value="{{ c }}">{% endfor %}</datalist>
 
-  <div class="modal-actions" style="margin-top:.5rem">
+  <button class="ap-btn" id="ap-aibtn" style="background:#5b3fa8;margin:.2rem 0 .5rem" onclick="apSuggest()">✨ AI 建議分類</button>
+  <div id="ap-aihint" style="font-size:.72rem;color:var(--amber);margin:-.2rem 0 .5rem;display:none"></div>
+
+  <div class="modal-actions" style="margin-top:.3rem">
     <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-right:auto" onclick="apDelete()">刪除</button>
     <button class="btn btn-outline" onclick="apStar()" id="ap-starbtn">☆ 最愛</button>
     <button class="btn btn-primary" onclick="apSave()">儲存</button>
@@ -60,8 +63,36 @@ function apOpen(id,mode,note,tag,area,cat,project){
   document.getElementById('ap-cat').value=cat||'';
   document.getElementById('ap-site-fields').style.display = apMode==='site' ? '' : 'none';
   document.getElementById('ap-personal-fields').style.display = apMode==='personal' ? '' : 'none';
+  const hint=document.getElementById('ap-aihint'); hint.style.display='none'; hint.textContent='';
+  const ab=document.getElementById('ap-aibtn'); ab.disabled=false; ab.textContent='✨ AI 建議分類';
   document.getElementById('ap-ov').classList.add('open');
   document.getElementById('ap-sheet').classList.add('open');
+}
+async function apSuggest(){
+  if(!apId) return;
+  const btn=document.getElementById('ap-aibtn'); btn.disabled=true; btn.textContent='AI 分析中…';
+  const hint=document.getElementById('ap-aihint');
+  try{
+    const r=await fetch('/api/site-photo/'+apId+'/ai-suggest',{method:'POST'});
+    const j=await r.json();
+    if(j.ok){
+      const s=j.suggestion;
+      if(apMode==='site'){
+        if(s.room) document.getElementById('ap-area').value=s.room;
+        if(s.work) document.getElementById('ap-tag').value=s.work;
+      }else{
+        if(s.category) document.getElementById('ap-cat').value=s.category;
+      }
+      if(s.mode && s.mode!==apMode){
+        hint.textContent = 'AI 認為這比較像「'+(s.mode==='site'?'工地':'個人')+'」照片，可到對應模式調整';
+        hint.style.display='block';
+      }
+      apToast(s.label ? ('AI：'+s.label) : 'AI 已建議，請確認');
+    }else{
+      apToast(j.error==='ai_unavailable' ? 'AI 暫時無法使用（未設定金鑰）' : '分析失敗');
+    }
+  }catch(e){ apToast('分析失敗'); }
+  btn.disabled=false; btn.textContent='✨ AI 建議分類';
 }
 function apClose(){document.getElementById('ap-ov').classList.remove('open');document.getElementById('ap-sheet').classList.remove('open');apId=null;}
 async function apStar(){
