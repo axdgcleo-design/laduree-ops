@@ -48,7 +48,7 @@
           {% if t.priority == 'high' %}
             <span style="font-size:.62rem;padding:1px 7px;border-radius:2px;background:#fee2e2;color:#dc2626">緊急</span>
           {% endif %}
-          {% if t.source == 'telegram' %}
+          {% if t.source in ('telegram', 'line') %}
             <span style="font-size:.62rem;color:var(--muted)">📱 Bot</span>
           {% endif %}
         </div>

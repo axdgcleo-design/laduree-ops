@@ -1,4 +1,14 @@
 import os, json
+
+# 讀取專案根目錄的 .env（Mac mini 本機用；Railway 用平台環境變數）
+_ENV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+if os.path.exists(_ENV):
+    with open(_ENV, encoding='utf-8') as _f:
+        for _l in _f:
+            _k, _, _v = _l.strip().partition('=')
+            if _k and not _k.startswith('#') and _v:
+                os.environ.setdefault(_k.strip(), _v.strip().strip('"\''))
+
 from flask import Flask, render_template, request, jsonify, redirect, url_for, g
 from datetime import datetime, date
 
@@ -6,7 +16,9 @@ app = Flask(__name__)
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 IS_PG = 'postgres' in DATABASE_URL
 
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
+LINE_TOKEN     = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', '')
+LINE_SECRET    = os.environ.get('LINE_CHANNEL_SECRET', '')
+LINE_ALLOWED_USERS = {u.strip() for u in os.environ.get('LINE_ALLOWED_USERS', '').split(',') if u.strip()}
 ANTHROPIC_KEY  = os.environ.get('ANTHROPIC_KEY', '')
 
 # ── DB helpers ───────────────────────────────────────────────────────
@@ -1104,77 +1116,95 @@ def api_import_finance():
     commit()
     return jsonify({'ok':True,'imported':imported})
 
-@app.route('/webhook/telegram', methods=['POST'])
-def telegram_webhook():
+# ── LINE Bot ─────────────────────────────────────────────────────────
+LINE_HELP = ("/pay 金額 廠商 備註\n/todo 待辦內容\n/defect 缺失描述\n"
+             "直接傳發票照片 → 自動辨識金額\n/id 查詢自己的 LINE userId")
+
+def _line_reply(reply_token, text):
     import requests as req
-    data = request.json
-    if not data: return 'ok'
-    msg = data.get('message',{})
-    chat_id = msg.get('chat',{}).get('id')
-    text = msg.get('text','')
-    photo = msg.get('photo')
-    if not chat_id: return 'ok'
+    req.post('https://api.line.me/v2/bot/message/reply', timeout=15,
+             headers={'Authorization': f'Bearer {LINE_TOKEN}'},
+             json={'replyToken': reply_token, 'messages': [{'type': 'text', 'text': text[:4900]}]})
 
-    def reply(txt):
-        req.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
-                 json={'chat_id':chat_id,'text':txt,'parse_mode':'HTML'})
+def _line_handle_image(message_id):
+    import requests as req, anthropic, base64, re
+    img = req.get(f'https://api-data.line.me/v2/bot/message/{message_id}/content', timeout=30,
+                  headers={'Authorization': f'Bearer {LINE_TOKEN}'}).content
+    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+    resp = client.messages.create(model='claude-sonnet-4-6', max_tokens=300,
+        messages=[{'role':'user','content':[
+            {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':base64.b64encode(img).decode()}},
+            {'type':'text','text':'這是發票或收據，只回傳JSON: {"amount":數字,"vendor":"廠商","date":"日期"}'}
+        ]}])
+    try:
+        r = json.loads(re.search(r'\{.*\}', resp.content[0].text, re.S).group(0))
+        return (f"📷 辨識結果：\n💰 NT$ {r.get('amount',0):,}\n🏪 {r.get('vendor','')}\n📅 {r.get('date','')}"
+                f"\n\n確認後輸入：/pay {r.get('amount',0)} {r.get('vendor','')}")
+    except Exception:
+        return "照片收到，但辨識失敗，請手動輸入：\n/pay 金額 廠商"
 
-    if photo and ANTHROPIC_KEY:
-        file_id = photo[-1]['file_id']
-        fi = req.get(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}').json()
-        fp = fi['result']['file_path']
-        img = req.get(f'https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{fp}').content
-        import anthropic, base64
-        client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
-        resp = client.messages.create(model='claude-sonnet-4-6',max_tokens=300,
-            messages=[{'role':'user','content':[
-                {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':base64.b64encode(img).decode()}},
-                {'type':'text','text':'這是發票或收據，只回傳JSON: {"amount":數字,"vendor":"廠商","date":"日期"}'}
-            ]}])
-        try:
-            r = json.loads(resp.content[0].text)
-            reply(f"📷 辨識結果：\n💰 NT$ {r.get('amount',0):,}\n🏪 {r.get('vendor','')}\n📅 {r.get('date','')}\n\n確認後輸入：/pay {r.get('amount',0)} {r.get('vendor','')}")
-        except:
-            reply("照片收到，請手動輸入：\n/pay 金額 廠商\n/todo 待辦\n/defect 缺失")
-        return 'ok'
-
+def _line_handle_text(text):
     ph = _ph()
-    if text.startswith('/pay'):
-        parts = text.split(' ',3)
-        if len(parts)>=3:
-            try:
-                amt = float(parts[1].replace(',',''))
-                vendor = parts[2]
-                note = parts[3] if len(parts)>3 else ''
-                execute(f"INSERT INTO vendor_invoices (vendor_name,amount,note,status) VALUES ({ph},{ph},{ph},'pending')",(vendor,amt,note))
-                commit()
-                reply(f"✅ 待付款已新增\n廠商：{vendor}\n金額：NT$ {amt:,.0f}")
-            except: reply("格式：/pay 金額 廠商名稱")
-        else: reply("格式：/pay 金額 廠商名稱")
-    elif text.startswith('/todo'):
-        title = text[5:].strip()
-        if title:
-            execute(f"INSERT INTO tasks (title,type,status,source) VALUES ({ph},'todo','open','telegram')",(title,))
-            commit()
-            reply(f"✅ 待辦：{title}")
-        else: reply("格式：/todo 待辦內容")
-    elif text.startswith('/defect'):
-        title = text[7:].strip()
-        if title:
-            execute(f"INSERT INTO tasks (title,type,status,source) VALUES ({ph},'defect','open','telegram')",(title,))
-            commit()
-            reply(f"🔴 缺失：{title}")
-        else: reply("格式：/defect 缺失描述")
-    else:
-        reply("/pay 金額 廠商\n/todo 待辦\n/defect 缺失\n直接傳照片辨識發票")
-    return 'ok'
+    cmd, _, rest = text.strip().partition(' ')
+    cmd = cmd.lower()
+    if cmd in ('/pay', '付款'):
+        parts = rest.split(' ', 2)
+        try:
+            amt = float(parts[0].replace(',', ''))
+            vendor = parts[1]
+        except (ValueError, IndexError):
+            return "格式：/pay 金額 廠商名稱"
+        note = parts[2] if len(parts) > 2 else ''
+        execute(f"INSERT INTO vendor_invoices (vendor_name,amount,note,status) VALUES ({ph},{ph},{ph},'pending')",(vendor,amt,note))
+        commit()
+        return f"✅ 待付款已新增\n廠商：{vendor}\n金額：NT$ {amt:,.0f}"
+    if cmd in ('/todo', '待辦'):
+        if not rest.strip(): return "格式：/todo 待辦內容"
+        execute(f"INSERT INTO tasks (title,type,status,source) VALUES ({ph},'todo','open','line')",(rest.strip(),))
+        commit()
+        return f"✅ 待辦：{rest.strip()}"
+    if cmd in ('/defect', '缺失'):
+        if not rest.strip(): return "格式：/defect 缺失描述"
+        execute(f"INSERT INTO tasks (title,type,status,source) VALUES ({ph},'defect','open','line')",(rest.strip(),))
+        commit()
+        return f"🔴 缺失：{rest.strip()}"
+    return LINE_HELP
 
-@app.route('/api/set-webhook', methods=['POST'])
-def set_webhook():
-    import requests as req
-    base = request.json.get('url') or request.host_url.rstrip('/')
-    r = req.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook',json={'url':f'{base}/webhook/telegram'})
-    return jsonify(r.json())
+def _line_process(events):
+    # 在背景執行：LINE 要求 webhook 盡快回 200，照片辨識可能要好幾秒
+    with app.app_context():
+        for ev in events:
+            if ev.get('type') != 'message' or not ev.get('replyToken'): continue
+            user_id = ev.get('source', {}).get('userId', '')
+            msg = ev.get('message', {})
+            try:
+                if msg.get('type') == 'text' and msg.get('text','').strip().lower() == '/id':
+                    out = f"你的 LINE userId：\n{user_id}"
+                elif LINE_ALLOWED_USERS and user_id not in LINE_ALLOWED_USERS:
+                    out = "⛔ 未授權使用者。輸入 /id 取得 userId，加入 .env 的 LINE_ALLOWED_USERS"
+                elif msg.get('type') == 'image':
+                    out = _line_handle_image(msg['id']) if ANTHROPIC_KEY else "照片收到（未設定 ANTHROPIC_KEY，無法辨識）"
+                elif msg.get('type') == 'text':
+                    out = _line_handle_text(msg.get('text', ''))
+                else:
+                    out = LINE_HELP
+                _line_reply(ev['replyToken'], out)
+            except Exception as e:
+                print(f"LINE webhook error: {e}")
+                try: _line_reply(ev['replyToken'], f"⚠️ 處理失敗：{e}")
+                except Exception: pass
+
+@app.route('/webhook/line', methods=['POST'])
+def line_webhook():
+    import hmac, hashlib, base64, threading
+    body = request.get_data()
+    sig = base64.b64encode(hmac.new(LINE_SECRET.encode(), body, hashlib.sha256).digest()).decode()
+    if not LINE_SECRET or not hmac.compare_digest(sig, request.headers.get('X-Line-Signature', '')):
+        return 'invalid signature', 403
+    events = (json.loads(body) or {}).get('events', [])
+    if events:
+        threading.Thread(target=_line_process, args=(events,), daemon=True).start()
+    return 'ok'
 
 @app.route('/settings', methods=['GET','POST'])
 def settings():
@@ -1198,7 +1228,7 @@ def settings():
         lp = os.path.join(BASE_DIR,'data','logo.png')
         if os.path.exists(lp):
             with open(lp,'rb') as f: logo_b64 = base64.b64encode(f.read()).decode()
-    webhook_url = request.host_url.rstrip('/')+'/webhook/telegram'
+    webhook_url = request.host_url.rstrip('/')+'/webhook/line'
     return render_template('settings.html',company=company,logo_b64=logo_b64,webhook_url=webhook_url)
 
 if __name__ == '__main__':

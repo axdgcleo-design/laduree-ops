@@ -5,3 +5,5 @@ data/ops.db
 data/logo.png
 .env
 *.bak
+logs/
+.venv/
