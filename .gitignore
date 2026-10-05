@@ -7,3 +7,4 @@ data/logo.png
 *.bak
 logs/
 .venv/
+data/line_media/

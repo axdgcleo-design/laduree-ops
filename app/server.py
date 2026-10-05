@@ -16,10 +16,6 @@ app = Flask(__name__)
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 IS_PG = 'postgres' in DATABASE_URL
 
-LINE_TOKEN     = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', '')
-LINE_SECRET    = os.environ.get('LINE_CHANNEL_SECRET', '')
-LINE_ALLOWED_USERS = {u.strip() for u in os.environ.get('LINE_ALLOWED_USERS', '').split(',') if u.strip()}
-ANTHROPIC_KEY  = os.environ.get('ANTHROPIC_KEY', '')
 
 # ── DB helpers ───────────────────────────────────────────────────────
 def get_db():
@@ -420,6 +416,13 @@ try:
     app.register_blueprint(finance_v3_api_bp)
 except Exception as e:
     print(f"finance_v3 init error: {e}")
+
+# LINE Bot（/webhook/line 接收訊息、/line 查看對話紀錄）
+try:
+    from app import line_bot
+    line_bot.register(app, dict(fetchall=fetchall, fetchone=fetchone, execute=execute, commit=commit))
+except Exception as e:
+    print(f"line_bot init error: {e}")
 
 # ── Routes ───────────────────────────────────────────────────────────
 @app.route('/')
@@ -1115,96 +1118,6 @@ def api_import_finance():
         imported['periods']+=1
     commit()
     return jsonify({'ok':True,'imported':imported})
-
-# ── LINE Bot ─────────────────────────────────────────────────────────
-LINE_HELP = ("/pay 金額 廠商 備註\n/todo 待辦內容\n/defect 缺失描述\n"
-             "直接傳發票照片 → 自動辨識金額\n/id 查詢自己的 LINE userId")
-
-def _line_reply(reply_token, text):
-    import requests as req
-    req.post('https://api.line.me/v2/bot/message/reply', timeout=15,
-             headers={'Authorization': f'Bearer {LINE_TOKEN}'},
-             json={'replyToken': reply_token, 'messages': [{'type': 'text', 'text': text[:4900]}]})
-
-def _line_handle_image(message_id):
-    import requests as req, anthropic, base64, re
-    img = req.get(f'https://api-data.line.me/v2/bot/message/{message_id}/content', timeout=30,
-                  headers={'Authorization': f'Bearer {LINE_TOKEN}'}).content
-    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
-    resp = client.messages.create(model='claude-sonnet-4-6', max_tokens=300,
-        messages=[{'role':'user','content':[
-            {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':base64.b64encode(img).decode()}},
-            {'type':'text','text':'這是發票或收據，只回傳JSON: {"amount":數字,"vendor":"廠商","date":"日期"}'}
-        ]}])
-    try:
-        r = json.loads(re.search(r'\{.*\}', resp.content[0].text, re.S).group(0))
-        return (f"📷 辨識結果：\n💰 NT$ {r.get('amount',0):,}\n🏪 {r.get('vendor','')}\n📅 {r.get('date','')}"
-                f"\n\n確認後輸入：/pay {r.get('amount',0)} {r.get('vendor','')}")
-    except Exception:
-        return "照片收到，但辨識失敗，請手動輸入：\n/pay 金額 廠商"
-
-def _line_handle_text(text):
-    ph = _ph()
-    cmd, _, rest = text.strip().partition(' ')
-    cmd = cmd.lower()
-    if cmd in ('/pay', '付款'):
-        parts = rest.split(' ', 2)
-        try:
-            amt = float(parts[0].replace(',', ''))
-            vendor = parts[1]
-        except (ValueError, IndexError):
-            return "格式：/pay 金額 廠商名稱"
-        note = parts[2] if len(parts) > 2 else ''
-        execute(f"INSERT INTO vendor_invoices (vendor_name,amount,note,status) VALUES ({ph},{ph},{ph},'pending')",(vendor,amt,note))
-        commit()
-        return f"✅ 待付款已新增\n廠商：{vendor}\n金額：NT$ {amt:,.0f}"
-    if cmd in ('/todo', '待辦'):
-        if not rest.strip(): return "格式：/todo 待辦內容"
-        execute(f"INSERT INTO tasks (title,type,status,source) VALUES ({ph},'todo','open','line')",(rest.strip(),))
-        commit()
-        return f"✅ 待辦：{rest.strip()}"
-    if cmd in ('/defect', '缺失'):
-        if not rest.strip(): return "格式：/defect 缺失描述"
-        execute(f"INSERT INTO tasks (title,type,status,source) VALUES ({ph},'defect','open','line')",(rest.strip(),))
-        commit()
-        return f"🔴 缺失：{rest.strip()}"
-    return LINE_HELP
-
-def _line_process(events):
-    # 在背景執行：LINE 要求 webhook 盡快回 200，照片辨識可能要好幾秒
-    with app.app_context():
-        for ev in events:
-            if ev.get('type') != 'message' or not ev.get('replyToken'): continue
-            user_id = ev.get('source', {}).get('userId', '')
-            msg = ev.get('message', {})
-            try:
-                if msg.get('type') == 'text' and msg.get('text','').strip().lower() == '/id':
-                    out = f"你的 LINE userId：\n{user_id}"
-                elif LINE_ALLOWED_USERS and user_id not in LINE_ALLOWED_USERS:
-                    out = "⛔ 未授權使用者。輸入 /id 取得 userId，加入 .env 的 LINE_ALLOWED_USERS"
-                elif msg.get('type') == 'image':
-                    out = _line_handle_image(msg['id']) if ANTHROPIC_KEY else "照片收到（未設定 ANTHROPIC_KEY，無法辨識）"
-                elif msg.get('type') == 'text':
-                    out = _line_handle_text(msg.get('text', ''))
-                else:
-                    out = LINE_HELP
-                _line_reply(ev['replyToken'], out)
-            except Exception as e:
-                print(f"LINE webhook error: {e}")
-                try: _line_reply(ev['replyToken'], f"⚠️ 處理失敗：{e}")
-                except Exception: pass
-
-@app.route('/webhook/line', methods=['POST'])
-def line_webhook():
-    import hmac, hashlib, base64, threading
-    body = request.get_data()
-    sig = base64.b64encode(hmac.new(LINE_SECRET.encode(), body, hashlib.sha256).digest()).decode()
-    if not LINE_SECRET or not hmac.compare_digest(sig, request.headers.get('X-Line-Signature', '')):
-        return 'invalid signature', 403
-    events = (json.loads(body) or {}).get('events', [])
-    if events:
-        threading.Thread(target=_line_process, args=(events,), daemon=True).start()
-    return 'ok'
 
 @app.route('/settings', methods=['GET','POST'])
 def settings():

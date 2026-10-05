@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}LINE 紀錄 — Laduree OPS{% endblock %}
+{% block body %}
+<style>
+  .line-wrap{display:grid;grid-template-columns:260px 1fr;gap:1rem;align-items:start}
+  .chat-item{display:block;padding:.6rem .75rem;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}
+  .chat-item.active{background:var(--cream)}
+  .chat-item small{color:var(--muted);font-size:.68rem}
+  .msg{padding:.55rem 0;border-bottom:1px solid var(--line)}
+  .msg-head{font-size:.7rem;color:var(--muted);margin-bottom:.2rem}
+  .msg-text{white-space:pre-wrap;word-break:break-word;font-size:.86rem;line-height:1.6}
+  .msg img{max-width:260px;max-height:260px;border-radius:2px;display:block;margin-top:.25rem}
+  @media (max-width:760px){.line-wrap{grid-template-columns:1fr}}
+</style>
+<div class="page">
+  <div class="page-header">
+    <div>
+      <span class="page-title">LINE 紀錄</span>
+      <span class="page-subtitle">{{ chats|length }} 個對話</span>
+    </div>
+  </div>
+
+  {% if not chats %}
+  <div class="card">還沒有收到任何 LINE 訊息。把 Bot 加為好友，或邀請進工地群組後就會開始記錄。</div>
+  {% else %}
+  <div class="line-wrap">
+    <div class="card" style="padding:0">
+      {% for c in chats %}
+      <a class="chat-item {% if c.chat_id==chat_id %}active{% endif %}" href="{{ url_for('line_bot.line_messages', chat=c.chat_id) }}">
+        {% if c.chat_type=='group' %}👥{% else %}👤{% endif %} {{ c.name }}
+        <br><small>{{ c.n }} 則 · {{ (c.last_at or '')[:16] }}{% if c.project_name %} · {{ c.project_name }}{% endif %}</small>
+      </a>
+      {% endfor %}
+    </div>
+
+    <div class="card">
+      <div style="display:flex;gap:.65rem;flex-wrap:wrap;margin-bottom:.75rem">
+        <form method="get" style="display:flex;gap:.4rem">
+          <input type="hidden" name="chat" value="{{ chat_id }}">
+          <input type="text" name="q" value="{{ q }}" placeholder="搜尋訊息內容" style="padding:.3rem .6rem">
+          <button class="btn btn-outline btn-sm">搜尋</button>
+        </form>
+        <form method="post" action="{{ url_for('line_bot.line_set_project', chat_id=chat_id) }}" style="display:flex;gap:.4rem;margin-left:auto">
+          <select name="project_id" onchange="this.form.submit()" style="padding:.3rem .6rem">
+            <option value="">— 對應案場（指令會自動帶入）—</option>
+            {% for p in projects %}
+            <option value="{{ p.id }}" {% for c in chats if c.chat_id==chat_id and c.project_id==p.id %}selected{% endfor %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+      {% for m in msgs %}
+      <div class="msg">
+        <div class="msg-head">{{ m.user_name or '' }} · {{ m.created_at }}</div>
+        {% if m.msg_type=='image' and m.file_path %}
+          <a href="{{ url_for('line_bot.line_media', p=m.file_path) }}" target="_blank"><img src="{{ url_for('line_bot.line_media', p=m.file_path) }}" loading="lazy"></a>
+        {% elif m.file_path %}
+          <a href="{{ url_for('line_bot.line_media', p=m.file_path) }}" target="_blank">📎 {{ m.text or m.msg_type }}</a>
+        {% else %}
+          <div class="msg-text">{{ m.text }}</div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div style="color:var(--muted)">沒有符合的訊息</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
