@@ -16,14 +16,14 @@
   </div>
 
   <div class="org-tools">
-    <button class="ap-pick" id="selbtn" onclick="toggleSelect()">☑️ 選取</button>
+    <button class="ap-pick" style="background:#5b3fa8;color:#fff;border-color:#5b3fa8" onclick="autoClassify()" id="auto-btn">✨ 自動分類{% if mode=='site' %}工種{% endif %}</button>
+    <button class="ap-pick" id="selbtn" onclick="toggleSelect()">☑️ 手動選取</button>
     <button class="ap-pick" id="selall" onclick="selectAll()" hidden>全選本頁</button>
-    <button class="ap-pick" style="background:#5b3fa8;color:#fff;border-color:#5b3fa8" onclick="aiBatch()" id="ai-batch">✨ AI 建議（前 20 張）</button>
   </div>
-  <div style="font-size:.74rem;color:var(--muted);margin:.1rem 0 .6rem" id="org-hint">
-    {% if mode=='site' %}點照片可單張分類；或按「選取」框多張 → 選案場＋工種一次套用。{% else %}點照片選分類；或按「選取」批次套用。{% endif %}
+  <div style="font-size:.74rem;color:var(--muted);margin:.1rem 0 .4rem" id="org-hint">
+    {% if mode=='site' %}按「自動分類工種」讓 AI 判斷每張工種（截圖/收據會自動歸個人）。案場請用「手動選取」指定。{% else %}按「自動分類」讓 AI 判斷分類。{% endif %}
   </div>
-  <div id="ai-batch-status" class="ap-hint" style="margin:-.3rem 0 .4rem"></div>
+  <div id="auto-status" class="ap-hint" style="margin:-.2rem 0 .5rem"></div>
 
   <div class="ap-grid" id="org-grid">
     {% for s in photos %}
@@ -168,28 +168,32 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const p=document.getElementById('bulk-proj'); if(p) p.addEventListener('change', updateApply);
 });
 
-async function aiBatch(){
+async function autoClassify(){
+  const btn=document.getElementById('auto-btn');
+  const st=document.getElementById('auto-status');
+  if(window.autoRunning){ window.autoRunning=false; btn.textContent='停止中…'; return; }
   const msg = ORG_MODE==='site'
-    ? 'AI 會先挑出截圖/收據/生活照移到「個人」，並建議空間。要開始嗎？'
-    : 'AI 會自動幫這些照片分類，之後你仍可修改。要開始嗎？';
+    ? 'AI 會自動判斷每張工地照的工種（案場仍需你指定），判不出的歸「其他」。可隨時停止。開始嗎？'
+    : 'AI 會自動幫這些照片分類，之後可修改。開始嗎？';
   if(!confirm(msg)) return;
-  const btn=document.getElementById('ai-batch'); btn.disabled=true; btn.textContent='AI 分析中…';
-  document.getElementById('ai-batch-status').textContent='處理中，請稍候…';
-  try{
-    const r=await fetch('/api/app/ai-organize',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({mode:ORG_MODE, limit:20})});
-    const j=await r.json();
-    if(j.ok){
-      document.getElementById('ai-batch-status').textContent='完成！已處理 '+j.applied+' / '+j.scanned+' 張';
-      setTimeout(()=>location.reload(), 800);
-    }else{
-      document.getElementById('ai-batch-status').textContent = (j.error==='ai_unavailable')?'AI 暫時無法使用（未設定金鑰）':'處理失敗';
-      btn.disabled=false; btn.textContent='✨ AI 建議（前 20 張）';
-    }
-  }catch(e){
-    document.getElementById('ai-batch-status').textContent='處理失敗';
-    btn.disabled=false; btn.textContent='✨ AI 建議（前 20 張）';
+  window.autoRunning=true;
+  btn.textContent='■ 停止';
+  let done=0;
+  while(window.autoRunning){
+    let j;
+    try{
+      const r=await fetch('/api/app/auto-classify',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({mode:ORG_MODE, limit:12})});
+      j=await r.json();
+    }catch(e){ st.textContent='連線中斷，已分類 '+done+' 張'; break; }
+    if(!j.ok){ st.textContent = (j.error==='ai_unavailable')?'AI 未啟用（伺服器未設定金鑰）':'處理失敗'; break; }
+    done += j.applied;
+    st.textContent='分析中… 已分類 '+done+' 張，剩 '+j.remaining+' 張';
+    if(j.applied===0 || j.remaining===0){ st.textContent='✅ 完成！已分類 '+done+' 張。'; break; }
   }
+  window.autoRunning=false;
+  btn.textContent='✨ 自動分類'+(ORG_MODE==='site'?'工種':'');
+  setTimeout(()=>location.reload(), 1300);
 }
 </script>
 {% endblock %}

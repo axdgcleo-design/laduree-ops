@@ -700,12 +700,20 @@ def _ai_classify(image_b64, known_areas, known_tags, known_cats):
         tags  = '、'.join(known_tags)  or '、'.join(DEFAULT_TAGS)
         cats  = '、'.join(known_cats)  or '、'.join(PERSONAL_CATS)
         prompt = (
-            "你是室內設計師的照片分類助手。看這張照片判斷分類，只回傳 JSON、不要多餘文字。\n"
-            "先判斷是「工地施工照」還是「個人照片」。\n"
-            f"若工地施工照：mode=\"site\"，room 從（{areas}）挑一個最貼切（可自訂），"
-            f"work 從（{tags}）挑最多兩個工種（逗號分隔，判斷不出留空）。\n"
-            "個人照片指截圖、想買的商品、發票收據、風景、寵物、食物、生活紀錄等；"
+            "你是室內裝修工地照片的分類助手，只回傳 JSON、不要多餘文字。\n"
+            "先判斷這張是「工地施工照」還是「個人照片」。\n"
+            "個人照片＝截圖、想買的商品、發票收據、風景、寵物、食物、生活紀錄；"
             f"mode=\"personal\"，category 從（{cats}）挑一個或自訂。\n"
+            f"工地施工照：mode=\"site\"，room 猜空間（{areas}，可自訂），"
+            f"work 判斷工種（從 {tags} 選，最多兩個、逗號分隔），依畫面特徵：\n"
+            "・水電＝外露電線管路、配電箱、開關插座盒、冷熱水管、排水管\n"
+            "・泥作＝水泥砂漿、打底粉光、砌磚、貼磚底層\n"
+            "・木作＝角材骨架、天花板輕鋼架/木骨架、木作櫃、矽酸鈣板\n"
+            "・油漆＝批土、刷漆滾筒、牆面均勻底色\n"
+            "・磁磚＝已貼好的磁磚面、填縫\n"
+            "・鋁窗＝鋁窗框、玻璃安裝\n"
+            "・保護/拆除＝地面保護板、拆除後裸露牆面或瓦礫\n"
+            "判斷不出工種就 work 留空字串。\n"
             '格式：{"mode":"site|personal","room":"","work":"","category":"","label":"一句話描述"}'
         )
         resp = client.messages.create(model=AI_MODEL, max_tokens=200,
@@ -1198,6 +1206,55 @@ def api_app_upload():
         n += 1
     commit()
     return jsonify({'ok':True,'count':n})
+
+@app.route('/api/app/auto-classify', methods=['POST'])
+def api_auto_classify():
+    """一鍵自動分類：對尚未標工種（或未分類的個人照）跑 AI，逐批處理直到全部完成。
+    每張處理後必定離開佇列（工種判不出時歸『其他』），確保可終止。案場無法由畫面判斷，仍需使用者指定。"""
+    d = request.json or {}; ph = _ph()
+    if not ANTHROPIC_KEY:
+        return jsonify({'ok':False,'error':'ai_unavailable'})
+    mode = _app_mode(d.get('mode','site'))
+    try:    limit = max(1, min(20, int(d.get('limit', 12))))
+    except: limit = 12
+    if mode == 'site':
+        rows = fetchall("SELECT id,area,thumb_data,image_data FROM site_photos "
+                        "WHERE mode='site' AND parent_id IS NULL AND (tag='' OR tag IS NULL) "
+                        "ORDER BY created_at DESC LIMIT %d" % limit)
+    else:
+        rows = fetchall("SELECT id,thumb_data,image_data FROM site_photos "
+                        "WHERE mode='personal' AND parent_id IS NULL AND (category='' OR category IS NULL) "
+                        "ORDER BY created_at DESC LIMIT %d" % limit)
+    areas, all_tags, _ = _suggest(None); cats = _personal_cats()
+    applied = 0
+    for r in rows:
+        img = r.get('thumb_data') or r.get('image_data') or ''
+        sug = _ai_classify(img, areas, all_tags, cats)
+        if not sug:
+            continue
+        if mode == 'site':
+            if sug['mode'] == 'personal':      # 截圖/收據等 → 移到個人、清出工地佇列
+                execute(f"UPDATE site_photos SET mode='personal', category={ph} WHERE id={ph}",
+                        (sug['category'] or '其他', r['id']))
+            else:
+                work = sug['work'] or '其他'    # 判不出工種歸『其他』，確保離開佇列
+                if sug['room'] and not (r.get('area') or ''):
+                    execute(f"UPDATE site_photos SET tag={ph}, area={ph} WHERE id={ph}",
+                            (work, sug['room'], r['id']))
+                else:
+                    execute(f"UPDATE site_photos SET tag={ph} WHERE id={ph}", (work, r['id']))
+        else:
+            execute(f"UPDATE site_photos SET category={ph} WHERE id={ph}",
+                    (sug['category'] or '其他', r['id']))
+        applied += 1
+    commit()
+    if mode == 'site':
+        rem = (fetchone("SELECT COUNT(*) c FROM site_photos WHERE mode='site' AND parent_id IS NULL "
+                        "AND (tag='' OR tag IS NULL)") or {}).get('c', 0)
+    else:
+        rem = (fetchone("SELECT COUNT(*) c FROM site_photos WHERE mode='personal' AND parent_id IS NULL "
+                        "AND (category='' OR category IS NULL)") or {}).get('c', 0)
+    return jsonify({'ok':True,'applied':applied,'remaining':rem})
 
 @app.route('/api/app/bulk-tag', methods=['POST'])
 def api_app_bulk_tag():
