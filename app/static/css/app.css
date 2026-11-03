@@ -105,3 +105,14 @@ body.appshell { background:var(--cream); padding-bottom:calc(var(--tabh) + env(s
 .ap-selbar-proj { width:100%; padding:.55rem .7rem; border:1px solid var(--line); border-radius:10px;
   background:var(--white); font-size:.9rem; margin-bottom:.5rem; }
 .bulk-label { font-size:.74rem; font-weight:600; color:var(--mid); margin:.2rem 0 .3rem; }
+
+/* 位置/時段分群卡 */
+.clu { background:var(--white); border:1px solid var(--line); border-left:3px solid var(--blue);
+  border-radius:12px; padding:10px 12px; margin-bottom:.6rem; }
+.clu-prev { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
+.clu-prev img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:7px; background:#eee; }
+.clu-meta { font-size:.78rem; color:var(--mid); margin:.5rem 0 .4rem; }
+.clu-act { display:flex; gap:.5rem; }
+.clu-sel { flex:1; min-width:0; padding:.5rem .6rem; border:1px solid var(--line); border-radius:9px;
+  background:var(--white); font-size:.85rem; }
+.clu-apply { white-space:nowrap; }

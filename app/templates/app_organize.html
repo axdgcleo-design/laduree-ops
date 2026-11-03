@@ -25,6 +25,35 @@
   </div>
   <div id="auto-status" class="ap-hint" style="margin:-.2rem 0 .5rem"></div>
 
+  {% if mode=='site' and clusters %}
+  <div class="ap-sec" style="margin-top:.4rem">
+    <span class="ap-dot" style="background:var(--blue)"></span>
+    <span class="ap-sec-t">依位置／時段歸案場</span>
+  </div>
+  <div style="font-size:.74rem;color:var(--muted);margin:-.1rem 0 .5rem">
+    同地點或同一次拍的照片已自動分群，認出是哪個案場就整群套用。
+  </div>
+  {% for c in clusters %}
+  <div class="clu">
+    <div class="clu-prev">
+      {% for pid in c.previews %}<img loading="lazy" src="{{ url_for('site_photo_thumb', sid=pid) }}">{% endfor %}
+    </div>
+    <div class="clu-meta">{{ '📍 同地點' if c.kind=='gps' else '🕐 同時段' }} · {{ c.label }} · {{ c.count }} 張</div>
+    <div class="clu-act">
+      <select id="clu-proj-{{ loop.index0 }}" class="clu-sel">
+        <option value="">選案場…</option>
+        {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+      </select>
+      <button class="ap-pick clu-apply" onclick="applyCluster({{ loop.index0 }})">套用</button>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="ap-sec" style="margin-top:.8rem">
+    <span class="ap-dot" style="background:var(--amber)"></span>
+    <span class="ap-sec-t">其餘未分類</span>
+  </div>
+  {% endif %}
+
   <div class="ap-grid" id="org-grid">
     {% for s in photos %}
     <div class="ap-cell" data-id="{{ s.id }}"
@@ -76,6 +105,23 @@
 {% block scripts %}
 <script>
 const ORG_MODE = {{ mode|tojson }};
+const CLUSTERS = {{ clusters|tojson if clusters else '[]' }};
+
+async function applyCluster(idx){
+  const sel=document.getElementById('clu-proj-'+idx);
+  const pid=sel.value;
+  if(!pid){ sel.focus(); return; }
+  const ids=(CLUSTERS[idx]||{}).ids||[];
+  if(!ids.length) return;
+  const btn=sel.parentElement.querySelector('.clu-apply'); btn.disabled=true; btn.textContent='套用中…';
+  try{
+    const r=await fetch('/api/app/bulk-tag',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ids, project_id:pid})});
+    if((await r.json()).ok){ location.reload(); }
+    else { btn.disabled=false; btn.textContent='重試'; }
+  }catch(e){ btn.disabled=false; btn.textContent='重試'; }
+}
+
 let selectMode = false;
 const picked = new Set();
 

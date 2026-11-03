@@ -251,6 +251,8 @@ def init_db():
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS thumb_data TEXT DEFAULT '';
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS mode TEXT DEFAULT 'site';
         ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS category TEXT DEFAULT '';
+        ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;
+        ALTER TABLE site_photos ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;
         CREATE TABLE IF NOT EXISTS company_info (
             id INTEGER PRIMARY KEY DEFAULT 1,
             name TEXT DEFAULT '漣一設計有限公司',
@@ -391,7 +393,9 @@ def init_db():
                        ('favorite','INTEGER DEFAULT 0'),
                        ('thumb_data',"TEXT DEFAULT ''"),
                        ('mode',"TEXT DEFAULT 'site'"),
-                       ('category',"TEXT DEFAULT ''")):
+                       ('category',"TEXT DEFAULT ''"),
+                       ('lat','REAL'),
+                       ('lng','REAL')):
             if c not in cols:
                 conn.execute(f"ALTER TABLE site_photos ADD COLUMN {c} {ddl}")
         conn.commit(); conn.close()
@@ -626,6 +630,69 @@ STATUS_LABELS = {'unclassified':'未分類','discuss':'待討論','fix':'待修�
 def _norm_dt(v):
     """把 created_at（SQLite 字串 / PG datetime）統一成字串。"""
     return str(v) if v is not None else ''
+
+def _parse_captured(v):
+    """把前端送來的拍攝時間（ISO 字串）轉成 'YYYY-MM-DD HH:MM:SS'；失敗回 None。"""
+    if not v: return None
+    s = str(v).strip().replace('T', ' ')
+    if s.endswith('Z'): s = s[:-1]
+    if '.' in s: s = s.split('.', 1)[0]      # 去掉毫秒
+    if '+' in s[11:]: s = s[:s.rfind('+')]   # 去掉時區位移
+    s = s.strip()
+    try:
+        datetime.strptime(s[:19], '%Y-%m-%d %H:%M:%S')
+        return s[:19]
+    except Exception:
+        return None
+
+def _cluster_unassigned(rows, gps_prec=3, time_gap_h=4):
+    """把未指定案場的照片分群：有 GPS 者依座標鄰近、無 GPS 者依拍攝時段。
+    rows: 需含 id, lat, lng, created_at（已 DESC 排序）。回傳群組清單。"""
+    gps_map = {}
+    gps_order = []
+    nogps = []
+    for r in rows:
+        lat, lng = r.get('lat'), r.get('lng')
+        if lat is not None and lng is not None:
+            key = (round(float(lat), gps_prec), round(float(lng), gps_prec))
+            if key not in gps_map:
+                gps_map[key] = []; gps_order.append(key)
+            gps_map[key].append(r)
+        else:
+            nogps.append(r)
+    clusters = []
+    for key in gps_order:
+        items = gps_map[key]
+        clusters.append({'kind': 'gps', 'items': items})
+    # 無 GPS → 依時段切（相鄰時間差 > time_gap_h 小時起新群）
+    if nogps:
+        cur = []
+        prev = None
+        gap = time_gap_h * 3600
+        for r in nogps:
+            ca = _norm_dt(r['created_at'])[:19]
+            try:
+                t = datetime.strptime(ca, '%Y-%m-%d %H:%M:%S').timestamp()
+            except Exception:
+                t = None
+            if prev is not None and t is not None and abs(prev - t) > gap:
+                if cur: clusters.append({'kind': 'time', 'items': cur}); cur = []
+            cur.append(r)
+            if t is not None: prev = t
+        if cur: clusters.append({'kind': 'time', 'items': cur})
+    # 標籤 + 預覽 + 日期範圍；大於 1 張才值得成群，單張也保留
+    out = []
+    for c in clusters:
+        items = c['items']
+        days = sorted({_norm_dt(x['created_at'])[:10] for x in items})
+        label = days[0] if len(days) == 1 else f"{days[0]} ～ {days[-1]}"
+        out.append({
+            'kind': c['kind'], 'label': label, 'count': len(items),
+            'ids': [x['id'] for x in items],
+            'previews': [x['id'] for x in items[:4]],
+        })
+    out.sort(key=lambda c: c['count'], reverse=True)
+    return out
 
 def _pending_count(pid):
     ph = _ph()
@@ -1158,9 +1225,15 @@ def app_organize():
     rows = _prep(fetchall(_APP_COLS + cond + " ORDER BY s.created_at DESC LIMIT 300", ()))
     projects = fetchall("SELECT id,name FROM projects ORDER BY name")
     areas, all_tags, _ = _suggest(None)
+    clusters = []
+    if mode == 'site':
+        craw = fetchall("SELECT id,lat,lng,created_at FROM site_photos "
+                        "WHERE mode='site' AND parent_id IS NULL AND project_id IS NULL "
+                        "ORDER BY created_at DESC LIMIT 1500")
+        clusters = [c for c in _cluster_unassigned(craw) if c['count'] >= 2][:15]
     return render_template('app_organize.html', mode=mode, photos=rows, total=len(rows),
         projects=projects, areas=areas, tags=all_tags, cats=_personal_cats(), active='organize',
-        **_app_pickers())
+        clusters=clusters, **_app_pickers())
 
 @app.route('/app/search')
 def app_search():
@@ -1195,14 +1268,25 @@ def api_app_upload():
     tag = d.get('tag',''); area = d.get('area',''); note = d.get('note','')
     n = 0
     for raw in imgs:
-        img = raw or ''
+        # 每項可為字串（純圖）或物件 {data, captured_at, lat, lng}
+        if isinstance(raw, dict):
+            img = raw.get('data','') or ''
+            cap = _parse_captured(raw.get('captured_at'))
+            lat = raw.get('lat'); lng = raw.get('lng')
+            try: lat = float(lat) if lat is not None else None
+            except: lat = None
+            try: lng = float(lng) if lng is not None else None
+            except: lng = None
+        else:
+            img = raw or ''; cap = None; lat = None; lng = None
         if img.startswith('data:') and ',' in img: img = img.split(',',1)[1]
         if not img: continue
         thumb = _make_thumb(img) or ''
+        created = cap or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         execute(f"""INSERT INTO site_photos
-            (project_id,image_data,thumb_data,mime,note,tag,area,status,mode,category)
-            VALUES ({ph},{ph},{ph},'image/jpeg',{ph},{ph},{ph},'unclassified',{ph},{ph})""",
-            (project_id, img, thumb, note, tag, area, mode, category))
+            (project_id,image_data,thumb_data,mime,note,tag,area,status,mode,category,lat,lng,created_at)
+            VALUES ({ph},{ph},{ph},'image/jpeg',{ph},{ph},{ph},'unclassified',{ph},{ph},{ph},{ph},{ph})""",
+            (project_id, img, thumb, note, tag, area, mode, category, lat, lng, created))
         n += 1
     commit()
     return jsonify({'ok':True,'count':n})
