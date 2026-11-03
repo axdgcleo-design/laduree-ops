@@ -1199,6 +1199,31 @@ def api_app_upload():
     commit()
     return jsonify({'ok':True,'count':n})
 
+@app.route('/api/app/bulk-tag', methods=['POST'])
+def api_app_bulk_tag():
+    """批次標記：把多張照片一次設定案場 / 工種 / 空間（或個人分類）。"""
+    d = request.json or {}; ph = _ph()
+    ids = [int(i) for i in (d.get('ids') or []) if str(i).isdigit()]
+    if not ids:
+        return jsonify({'ok':False,'error':'no_ids'}), 400
+    sets, vals = [], []
+    if d.get('project_id'):
+        sets.append(f"project_id={ph}"); vals.append(d['project_id'])
+    if d.get('area'):
+        sets.append(f"area={ph}"); vals.append(d['area'])
+    if 'work' in d:                       # 可為空字串＝清掉工種
+        sets.append(f"tag={ph}"); vals.append(d.get('work') or '')
+    if 'category' in d:
+        sets.append(f"category={ph}"); vals.append(d.get('category') or '')
+    if d.get('mode') in ('site','personal'):
+        sets.append(f"mode={ph}"); vals.append(d['mode'])
+    if not sets:
+        return jsonify({'ok':False,'error':'nothing_to_set'}), 400
+    marks = ','.join([ph] * len(ids))
+    execute(f"UPDATE site_photos SET {','.join(sets)} WHERE id IN ({marks})", vals + ids)
+    commit()
+    return jsonify({'ok':True,'count':len(ids)})
+
 @app.route('/api/site-photo/<int:sid>/ai-suggest', methods=['POST'])
 def api_ai_suggest(sid):
     """單張 AI 建議分類（不自動儲存，供編輯 sheet 預填後由使用者確認）。"""

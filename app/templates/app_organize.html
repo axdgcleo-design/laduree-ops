@@ -1,5 +1,4 @@
 {% extends 'app_base.html' %}
-{% import '_app_card.html' as card %}
 {% block title %}整理 — 整理助手{% endblock %}
 {% block heading %}整理{% endblock %}
 {% block body %}
@@ -15,13 +14,27 @@
     <span class="ap-sec-t">未分類</span>
     <span class="ap-sec-n">{{ total }} 張</span>
   </div>
-  <div style="font-size:.76rem;color:var(--muted);margin:-.1rem 0 .6rem">
-    點一張照片 → {% if mode=='site' %}指定案場與工種{% else %}選擇分類{% endif %}，即完成歸檔。
+
+  <div class="org-tools">
+    <button class="ap-pick" id="selbtn" onclick="toggleSelect()">☑️ 選取</button>
+    <button class="ap-pick" id="selall" onclick="selectAll()" hidden>全選本頁</button>
+    <button class="ap-pick" style="background:#5b3fa8;color:#fff;border-color:#5b3fa8" onclick="aiBatch()" id="ai-batch">✨ AI 建議（前 20 張）</button>
   </div>
-  <button class="ap-btn" id="ai-batch" style="background:#5b3fa8;margin:0 0 .8rem" onclick="aiBatch()">
-    ✨ 讓 AI 建議分類（前 20 張）</button>
-  <div id="ai-batch-status" class="ap-hint" style="margin-top:-.5rem"></div>
-  <div class="ap-grid">{% for s in photos %}{{ card.cell(s) }}{% endfor %}</div>
+  <div style="font-size:.74rem;color:var(--muted);margin:.1rem 0 .6rem" id="org-hint">
+    {% if mode=='site' %}點照片可單張分類；或按「選取」框多張 → 選案場＋工種一次套用。{% else %}點照片選分類；或按「選取」批次套用。{% endif %}
+  </div>
+  <div id="ai-batch-status" class="ap-hint" style="margin:-.3rem 0 .4rem"></div>
+
+  <div class="ap-grid" id="org-grid">
+    {% for s in photos %}
+    <div class="ap-cell" data-id="{{ s.id }}"
+         onclick='cellTap({{ s.id }}, {{ (s.note or "")|tojson }}, {{ (s.tag or "")|tojson }}, {{ (s.area or "")|tojson }}, {{ (s.category or "")|tojson }}, {{ (s.project_name or "")|tojson }})'>
+      <img loading="lazy" src="{{ url_for('site_photo_thumb', sid=s.id) }}">
+      <span class="ap-check">✓</span>
+      <span class="ap-t">{{ s._time }}{% if s._tags %} · {{ s._tags[0] }}{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
 {% else %}
   <div class="ap-empty">
     <div class="big">✅</div>
@@ -31,17 +44,136 @@
 {% endif %}
 
 {% endblock %}
-{% block sheets %}{% include '_app_sheet.html' %}{% endblock %}
+
+{% block sheets %}
+{% include '_app_sheet.html' %}
+
+<!-- 批次標記列 -->
+<div class="ap-selbar" id="selbar" hidden>
+  <div class="ap-selbar-head">
+    <span><b id="selcount">0</b> 張已選</span>
+    <button onclick="clearSel()">清除</button>
+  </div>
+  {% if mode=='site' %}
+  <select id="bulk-proj" class="ap-selbar-proj">
+    <option value="">選擇案場…</option>
+    {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+  </select>
+  <div class="bulk-label">工種（可複選）</div>
+  <div class="ap-pickrow" id="bulk-work">
+    {% for t in tags %}<button type="button" class="ap-pick" data-v="{{ t }}" onclick="toggleWork(this)">{{ t }}</button>{% endfor %}
+  </div>
+  {% else %}
+  <div class="bulk-label">分類</div>
+  <div class="ap-pickrow" id="bulk-cat">
+    {% for c in cats %}<button type="button" class="ap-pick" data-v="{{ c }}" onclick="pickCat(this)">{{ c }}</button>{% endfor %}
+  </div>
+  {% endif %}
+  <button class="ap-btn" id="bulk-apply" onclick="applyBulk()" style="margin-top:.5rem" disabled>套用</button>
+</div>
+{% endblock %}
+
 {% block scripts %}
 <script>
 const ORG_MODE = {{ mode|tojson }};
+let selectMode = false;
+const picked = new Set();
+
+function toggleSelect(){
+  selectMode = !selectMode;
+  document.getElementById('selbtn').classList.toggle('on', selectMode);
+  document.getElementById('selall').hidden = !selectMode;
+  document.getElementById('org-grid').classList.toggle('selecting', selectMode);
+  if(!selectMode) clearSel();
+  else document.getElementById('selbar').hidden = (picked.size===0);
+}
+
+function cellTap(id, note, tag, area, cat, project){
+  if(selectMode){
+    const el = document.querySelector('.ap-cell[data-id="'+id+'"]');
+    if(picked.has(id)){ picked.delete(id); el.classList.remove('sel'); }
+    else { picked.add(id); el.classList.add('sel'); }
+    refreshBar();
+  } else {
+    apOpen(id, ORG_MODE, note, tag, area, cat, project);
+  }
+}
+
+function selectAll(){
+  document.querySelectorAll('#org-grid .ap-cell').forEach(el=>{
+    picked.add(parseInt(el.dataset.id)); el.classList.add('sel');
+  });
+  refreshBar();
+}
+function clearSel(){
+  picked.clear();
+  document.querySelectorAll('#org-grid .ap-cell.sel').forEach(el=>el.classList.remove('sel'));
+  refreshBar();
+}
+function refreshBar(){
+  document.getElementById('selcount').textContent = picked.size;
+  document.getElementById('selbar').hidden = !(selectMode && picked.size>0);
+  updateApply();
+}
+
+// 工種多選
+const works = new Set();
+function toggleWork(b){
+  const v=b.dataset.v;
+  if(works.has(v)){ works.delete(v); b.classList.remove('on'); }
+  else { works.add(v); b.classList.add('on'); }
+  updateApply();
+}
+// 個人分類單選
+let cat = '';
+function pickCat(b){
+  document.querySelectorAll('#bulk-cat .ap-pick').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); cat=b.dataset.v; updateApply();
+}
+function updateApply(){
+  const btn=document.getElementById('bulk-apply');
+  if(!btn) return;
+  let ready=false, label='套用';
+  if(ORG_MODE==='site'){
+    const proj=document.getElementById('bulk-proj').value;
+    ready = picked.size>0 && (proj || works.size>0);
+    label = '套用到 '+picked.size+' 張';
+  } else {
+    ready = picked.size>0 && cat;
+    label = '套用到 '+picked.size+' 張';
+  }
+  btn.disabled=!ready; btn.textContent=label;
+}
+
+async function applyBulk(){
+  const body = { ids: [...picked] };
+  if(ORG_MODE==='site'){
+    const proj=document.getElementById('bulk-proj').value;
+    if(proj) body.project_id = proj;
+    body.work = [...works].join(',');
+  } else {
+    body.category = cat; body.mode='personal';
+  }
+  const btn=document.getElementById('bulk-apply'); btn.disabled=true; btn.textContent='套用中…';
+  try{
+    const r=await fetch('/api/app/bulk-tag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(j.ok){ location.reload(); }
+    else { btn.disabled=false; btn.textContent='套用失敗，重試'; }
+  }catch(e){ btn.disabled=false; btn.textContent='套用失敗，重試'; }
+}
+
+// 綁定案場下拉改變時更新按鈕
+document.addEventListener('DOMContentLoaded', ()=>{
+  const p=document.getElementById('bulk-proj'); if(p) p.addEventListener('change', updateApply);
+});
+
 async function aiBatch(){
-  const btn=document.getElementById('ai-batch');
   const msg = ORG_MODE==='site'
-    ? 'AI 會建議每張的空間與工種（案場仍需你指定）。要開始嗎？'
+    ? 'AI 會先挑出截圖/收據/生活照移到「個人」，並建議空間。要開始嗎？'
     : 'AI 會自動幫這些照片分類，之後你仍可修改。要開始嗎？';
   if(!confirm(msg)) return;
-  btn.disabled=true; btn.textContent='AI 分析中…';
+  const btn=document.getElementById('ai-batch'); btn.disabled=true; btn.textContent='AI 分析中…';
   document.getElementById('ai-batch-status').textContent='處理中，請稍候…';
   try{
     const r=await fetch('/api/app/ai-organize',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -52,11 +184,11 @@ async function aiBatch(){
       setTimeout(()=>location.reload(), 800);
     }else{
       document.getElementById('ai-batch-status').textContent = (j.error==='ai_unavailable')?'AI 暫時無法使用（未設定金鑰）':'處理失敗';
-      btn.disabled=false; btn.textContent='✨ 讓 AI 建議分類（前 20 張）';
+      btn.disabled=false; btn.textContent='✨ AI 建議（前 20 張）';
     }
   }catch(e){
     document.getElementById('ai-batch-status').textContent='處理失敗';
-    btn.disabled=false; btn.textContent='✨ 讓 AI 建議分類（前 20 張）';
+    btn.disabled=false; btn.textContent='✨ AI 建議（前 20 張）';
   }
 }
 </script>
