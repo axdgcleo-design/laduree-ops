@@ -1,0 +1,28 @@
+{% extends 'app_base.html' %}
+{% import '_app_card.html' as card %}
+{% block title %}{{ title }} — 整理助手{% endblock %}
+{% block topbar %}
+  <a class="ap-back" href="{{ back }}">‹</a>
+  <div class="ap-title">{{ title }}</div>
+  <span class="ap-sub">{{ total }} 張</span>
+{% endblock %}
+{% block body %}
+
+<div class="ap-view">
+  <a href="?view=photo" class="{% if view!='type' %}on{% endif %}">照片</a>
+  <a href="?view=type" class="{% if view=='type' %}on{% endif %}">{{ type_label }}</a>
+</div>
+
+{% if total==0 %}
+  <div class="ap-empty"><div class="big">🗂️</div><div style="margin-top:.5rem">這裡還沒有照片</div></div>
+{% elif view=='type' %}
+  {% for sec in typegroups %}
+  <div class="ap-sec"><span class="ap-dot"></span><span class="ap-sec-t">{{ sec.name }}</span><span class="ap-sec-n">{{ sec.rows|length }} 張</span></div>
+  <div class="ap-grid">{% for s in sec.rows %}{{ card.cell(s) }}{% endfor %}</div>
+  {% endfor %}
+{% else %}
+  {{ card.daygrid(groups) }}
+{% endif %}
+
+{% endblock %}
+{% block sheets %}{% include '_app_sheet.html' %}{% endblock %}

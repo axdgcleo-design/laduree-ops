@@ -27,7 +27,7 @@
   {% if photos %}
     {% for s in photos %}
     <div class="pend-item" onclick='{% if s.status=="fix" %}location.href="{{ url_for("site_photo_issue", sid=s.id) }}"{% else %}openClassify({{ s.id }}, {{ s.status|tojson }}, {{ (s.note or "")|tojson }}, {{ (s.tag or "")|tojson }}, {{ (s.area or "")|tojson }}){% endif %}'>
-      <img class="pend-thumb" loading="lazy" src="{{ url_for('site_photo_img', sid=s.id) }}">
+      <img class="pend-thumb" loading="lazy" src="{{ url_for('site_photo_thumb', sid=s.id) }}">
       <div class="pend-main">
         <div class="pend-cat">
           {% if s.area or s.tag %}{{ s.area }}{% if s.area and s.tag %} · {% endif %}{{ s.tag }}{% else %}{{ status_labels[s.status] }}{% endif %}
